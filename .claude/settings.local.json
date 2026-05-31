@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"//\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\David\\\\Code\\\\Docxodus\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem *)"
+    ]
+  }
+}
