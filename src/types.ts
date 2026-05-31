@@ -20,6 +20,9 @@ export interface ComparisonMetadata {
   readonly baselineSize: number;
   readonly candidateSize: number;
   readonly identicalBinary: boolean;
+  readonly comparisonMode?: 'preprocessed-text' | 'binary-fallback';
+  readonly baselineParagraphs?: number;
+  readonly candidateParagraphs?: number;
 }
 
 export interface CompareResult {

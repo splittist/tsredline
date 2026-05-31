@@ -1,8 +1,11 @@
 import type { CompareOptions, CompareResult } from './types';
+import { preprocessDocx } from './preprocessDocx';
 import { arrayBuffersEqual } from './utils/arrayBuffer';
 
 const SKELETON_NOTICE =
   'DOCX structural comparison is not implemented yet. This scaffold only validates inputs and reports coarse binary-level differences.';
+const PREPROCESS_NOTICE =
+  'Phase-1 preprocessing is active: comparison currently uses normalized word/document.xml text while deeper structural phases are still pending.';
 
 function isArrayBuffer(value: unknown): value is ArrayBuffer {
   return Object.prototype.toString.call(value) === '[object ArrayBuffer]';
@@ -23,6 +26,60 @@ export async function compareDocx(
   assertArrayBuffer(candidate, 'candidate');
 
   const identicalBinary = arrayBuffersEqual(baseline, candidate);
+
+  try {
+    const preprocessOptions =
+      options.ignoreWhitespace === undefined
+        ? {}
+        : { ignoreWhitespace: options.ignoreWhitespace };
+
+    const baselinePreprocessed = await preprocessDocx(
+      baseline,
+      preprocessOptions,
+    );
+    const candidatePreprocessed = await preprocessDocx(
+      candidate,
+      preprocessOptions,
+    );
+
+    const equal =
+      baselinePreprocessed.normalizedText === candidatePreprocessed.normalizedText;
+
+    return {
+      equal,
+      summary: equal
+        ? 'Preprocessed document text matches. Deeper XML-structure diff phases are still pending.'
+        : 'Preprocessed document text differs. Deeper XML-structure diff phases are still pending.',
+      changes: equal
+        ? []
+        : [
+            {
+              kind: 'replace',
+              path: 'word/document.xml:text',
+              before: `${baselinePreprocessed.wordCount} words in ${baselinePreprocessed.paragraphCount} paragraphs`,
+              after: `${candidatePreprocessed.wordCount} words in ${candidatePreprocessed.paragraphCount} paragraphs`,
+            },
+          ],
+      notices: [
+        {
+          code: 'SKELETON_ENGINE',
+          message: options.includeDiagnostics
+            ? `${SKELETON_NOTICE} ${PREPROCESS_NOTICE}`
+            : SKELETON_NOTICE,
+        },
+      ],
+      metadata: {
+        baselineSize: baseline.byteLength,
+        candidateSize: candidate.byteLength,
+        identicalBinary,
+        comparisonMode: 'preprocessed-text',
+        baselineParagraphs: baselinePreprocessed.paragraphCount,
+        candidateParagraphs: candidatePreprocessed.paragraphCount,
+      },
+    };
+  } catch {
+    // Keep binary fallback behavior for non-DOCX inputs used in unit tests or diagnostics.
+  }
 
   return {
     equal: identicalBinary,
@@ -51,6 +108,7 @@ export async function compareDocx(
       baselineSize: baseline.byteLength,
       candidateSize: candidate.byteLength,
       identicalBinary,
+      comparisonMode: 'binary-fallback',
     },
   };
 }
