@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-01
+Last reviewed: 2026-06-01 (updated 2026-06-01: unid stamping)
 
 Summary
 
@@ -27,6 +27,10 @@ What is implemented
 - A characterization matrix has been started in tests/fixtures/caseManifest.ts, with C#-traceable scenarios covering text edits, paragraph-boundary cases, tables, moves, footnotes/endnotes, images, and math.
 - The repo contains a call-graph document that breaks the original C# algorithm into explicit phases, which is useful as a porting roadmap.
 
+What is not yet ported but in progress
+
+- assignUnids covers the core block elements (w:p, w:tr) but does not yet stamp runs (w:r) or inline content needed for word-level atom construction.
+
 What is only partially ported
 
 - compareDocx is still a scaffold, not a full document comparison engine.
@@ -46,8 +50,9 @@ What does not appear to be ported yet
   - PowerTools markup cleanup,
   - markup simplification,
   - unique footnote/endnote reference handling,
-  - unid stamping across content parts,
+  - unid stamping of runs/inline content (block-level stamping is done; atom construction requires run-level ids),
   - external-data detachment and related package fixups.
+- The comparison engine must process headers, footers, and comments in addition to the document/footnotes/endnotes covered by the C# baseline. assignUnids already enumerates these parts; downstream phases must do the same.
 - Revision processing equivalents for accepting/rejecting tracked revisions before correlation.
 - Revision processing parity is still incomplete: the current implementation handles core inserted/deleted text wrappers but does not yet cover the full C# transform set (property-change elements, table/paragraph mark edge cases, styles-part handling, and broader fixups).
 - The atomization pipeline:
@@ -69,6 +74,7 @@ Current testing status
 - Unit tests verify preprocessing on real DOCX fixtures.
 - Unit tests verify deterministic block hashing and optional table-row hashing.
 - Unit tests verify revision-sensitive block hashing behavior (default accept mode and accept vs reject signature divergence).
+- assignUnids stamps every w:p and w:tr across all content parts (document, footnotes, endnotes, comments, headers, footers) with a globally unique, sequentially increasing integer in the urn:tsredline:wct namespace. The counter is shared across parts so IDs never overlap; document.xml is always processed first. Seven unit tests verify per-element uniqueness, cross-element-kind uniqueness, cross-part monotonicity, the unidCount invariant, valid DOCX output, and idempotency.
 - Characterization smoke tests verify that compareDocx runs across many real DOCX fixtures without throwing.
 - Roadmap characterization tests are still mostly todo items; they define target behavior but do not yet validate C# parity.
 

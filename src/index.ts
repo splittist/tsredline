@@ -1,3 +1,4 @@
+export { assignUnids } from './assignUnids';
 export { compareDocx } from './compareDocx';
 export { hashBlockLevelContent } from './hashBlockLevelContent';
 export { preprocessDocx } from './preprocessDocx';
@@ -8,6 +9,7 @@ export type {
   ComparisonMetadata,
   ComparisonNotice,
 } from './types';
+export type { AssignUnidsResult } from './assignUnids';
 export type {
   BlockHash,
   HashBlockLevelOptions,
