@@ -1,5 +1,6 @@
 export { assignUnids } from './assignUnids';
 export { compareDocx } from './compareDocx';
+export { createAtomList } from './createAtomList';
 export { hashBlockLevelContent } from './hashBlockLevelContent';
 export { preprocessDocx } from './preprocessDocx';
 export type {
@@ -10,6 +11,12 @@ export type {
   ComparisonNotice,
 } from './types';
 export type { AssignUnidsResult } from './assignUnids';
+export type {
+  AtomKind,
+  AtomListResult,
+  ComparisonUnitAtom,
+  CreateAtomListOptions,
+} from './createAtomList';
 export type {
   BlockHash,
   HashBlockLevelOptions,

@@ -1,5 +1,7 @@
 import JSZip from 'jszip';
 
+import { collectContentParts } from './docxParts';
+
 export const WCT_NS = 'urn:tsredline:wct';
 export const WCT_PREFIX = 'wct';
 export const WCT_UNID_LOCAL = 'id';
@@ -9,16 +11,6 @@ export const WCT_XMLNS_QNAME = `xmlns:${WCT_PREFIX}`;
 // Block-level local names that receive a stamped unid.
 // w:p and w:tr are the primary correlation units for phase-1 LCS matching.
 const STAMPED_LOCAL_NAMES = new Set(['p', 'tr']);
-
-// Fixed optional parts, in processing order after word/document.xml.
-const FIXED_OPTIONAL_PARTS = [
-  'word/footnotes.xml',
-  'word/endnotes.xml',
-  'word/comments.xml',
-] as const;
-
-// Header and footer parts are discovered from the zip manifest.
-const HEADER_FOOTER_RE = /^word\/(header|footer)\d+\.xml$/;
 
 export interface AssignUnidsResult {
   readonly docx: ArrayBuffer;
@@ -61,27 +53,9 @@ function stampPart(xml: string, counter: { value: number }): string {
   return new XMLSerializer().serializeToString(doc);
 }
 
-function collectParts(zip: JSZip): string[] {
-  const parts: string[] = ['word/document.xml'];
-
-  for (const partName of FIXED_OPTIONAL_PARTS) {
-    if (zip.file(partName) !== null) {
-      parts.push(partName);
-    }
-  }
-
-  for (const partName of Object.keys(zip.files).sort()) {
-    if (HEADER_FOOTER_RE.test(partName)) {
-      parts.push(partName);
-    }
-  }
-
-  return parts;
-}
-
 export async function assignUnids(docx: ArrayBuffer): Promise<AssignUnidsResult> {
   const zip = await JSZip.loadAsync(new Uint8Array(docx));
-  const parts = collectParts(zip);
+  const parts = collectContentParts(zip);
   const counter = { value: 1 };
   const partsStamped: string[] = [];
 
