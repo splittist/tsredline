@@ -1,15 +1,15 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-01 (updated 2026-06-01: atom list construction)
+Last reviewed: 2026-06-01 (updated 2026-06-01: hierarchical comparison-unit construction)
 
 Summary
 
-The TypeScript port is in an early but real implementation phase. The repository now has a working package scaffold, real DOCX fixture coverage, a phase-1 preprocessing pass with initial revision-mode handling, and a simplified block-hashing pass that now shares the same revision-mode preprocessing semantics. The full OpenXmlPowerTools comparison engine from the C# reference has not been ported yet.
+The TypeScript port is in an early but real implementation phase. The repository now has a working package scaffold, real DOCX fixture coverage, a phase-1 preprocessing pass with initial revision-mode handling, a simplified block-hashing pass, unid stamping, atom list construction, and a new hierarchical comparison-unit tree. The full OpenXmlPowerTools comparison engine from the C# reference has not been ported yet.
 
 What is implemented
 
 - Package/tooling scaffold is in place for a browser-first TypeScript library: Vite, TypeScript, ESLint, Vitest, and JSZip.
-- Public API surface exists in src/index.ts with compareDocx, preprocessDocx, and hashBlockLevelContent exports.
+- Public API surface exists in src/index.ts with compareDocx, preprocessDocx, hashBlockLevelContent, createAtomList, assignUnids, and getComparisonUnitList exports.
 - preprocessDocx reads word/document.xml from a DOCX package, extracts paragraph text, optionally normalizes whitespace, and returns paragraph/word counts plus normalized text.
 - preprocessDocx now includes a first revision-preprocessing slice with revisionMode options:
   - accept: include inserted/move-to content and drop deleted/move-from content,
@@ -26,13 +26,19 @@ What is implemented
 - Real fixture-based tests exist for preprocessing, block hashing, and smoke coverage across a curated set of DOCX comparison cases.
 - A characterization matrix has been started in tests/fixtures/caseManifest.ts, with C#-traceable scenarios covering text edits, paragraph-boundary cases, tables, moves, footnotes/endnotes, images, and math.
 - The repo contains a call-graph document that breaks the original C# algorithm into explicit phases, which is useful as a porting roadmap.
-- assignUnids stamps every w:p and w:tr across all content parts with a sequentially increasing wct:id in the urn:tsredline:wct namespace. A shared docxParts module enumerates parts in stable order (document, footnotes, endnotes, comments, headers, footers) and is used by both assignUnids and createAtomList.
-- createAtomList is the first full atomization pass. It accepts a stamped DOCX, applies revision preprocessing per part, then walks every w:p (including those inside table cells and content controls) and emits one ComparisonUnitAtom per whitespace-delimited word from w:t content and one atom per non-text inline element (w:drawing → image, m:oMath → math, w:br → break, w:sym → symbol, w:fldChar → field-char). Each atom carries paraUnid (from the wct:id stamp), runPropsXml, paraPropsXml, a text comparison key, an AtomKind, and the source partName. Recursion handles w:hyperlink, w:sdt/sdtContent, w:fldSimple, w:customXml, and revision wrappers; all six content-part families are processed in order.
+- assignUnids stamps every w:p, w:tr, w:tbl, w:tc, and w:txbxContent across all content parts with a sequentially increasing wct:id in the urn:tsredline:wct namespace. The extended stamp set (tbl/tc/txbxContent added this iteration) is required to build accurate hierarchical grouping keys. A shared docxParts module enumerates parts in stable order (document, footnotes, endnotes, comments, headers, footers) and is used by both assignUnids and createAtomList.
+- createAtomList is the first full atomization pass. It accepts a stamped DOCX, applies revision preprocessing per part, then walks every w:p (including those inside table cells and content controls) and emits one ComparisonUnitAtom per whitespace-delimited word from w:t content and one atom per non-text inline element (w:drawing → image, m:oMath → math, w:br → break, w:sym → symbol, w:fldChar → field-char). Each atom carries paraUnid (from the wct:id stamp), runPropsXml, paraPropsXml, a text comparison key, an AtomKind, the source partName, and now ancestorKeys (the ordered chain of grouping-element local names and their unids from outermost ancestor to the enclosing paragraph, e.g. ["tbl:5","tr:8","tc:11","p:14"]). Recursion handles w:hyperlink, w:sdt/sdtContent, w:fldSimple, w:customXml, and revision wrappers; all six content-part families are processed in order.
+- getComparisonUnitList (new) accepts the flat atom list produced by createAtomList and builds the full comparison-unit hierarchy. Each atom is wrapped in a ComparisonUnitWord (with a SHA-1 hash of the atom's text/kind). Words are then recursively grouped into ComparisonUnitGroup nodes (paragraph, cell, row, table, textbox) using atom.ancestorKeys with a GroupAdjacent pass at each level — mirroring C# GetComparisonUnitList → GetHierarchicalComparisonUnits. Group SHA-1 hashes are computed bottom-up from child hashes. Limitations vs. C#: group-level hashes are derived from child hashes rather than pre-stamped element attributes (HashBlockLevelContent propagation is not yet wired up); paragraph-mark atoms are not emitted so empty paragraphs are invisible in the hierarchy.
 
 What is in progress (near-term)
 
 - Run-level unid stamping (w:r): assignUnids currently stamps only block-level elements; run-level ids are needed for reconstruction to locate source elements precisely. Can be deferred until the reconstruction phase begins.
-- The atomization pipeline item below is now underway: createAtomList covers the atom model; hierarchical comparison-unit construction (grouping atoms into word/group/paragraph/table units) is the next step before the LCS engine.
+- The LCS/correlation engine is the next major piece:
+  - CorrelatedSequence modeling (Unknown / Equal / Deleted / Inserted states),
+  - correlated-hash fast path (ProcessCorrelatedHashes),
+  - prefix/suffix trimming (FindCommonAtBeginningAndEnd),
+  - full LCS over unresolved regions (DoLcsAlgorithm),
+  - table-specific row matching (DoLcsAlgorithmForTable).
 
 What is only partially ported
 
@@ -58,14 +64,8 @@ What does not appear to be ported yet
 - The comparison engine must process headers, footers, and comments in addition to the document/footnotes/endnotes covered by the C# baseline. assignUnids already enumerates these parts; downstream phases must do the same.
 - Revision processing equivalents for accepting/rejecting tracked revisions before correlation.
 - Revision processing parity is still incomplete: the current implementation handles core inserted/deleted text wrappers but does not yet cover the full C# transform set (property-change elements, table/paragraph mark edge cases, styles-part handling, and broader fixups).
-- The atomization pipeline (partially underway — see createAtomList above):
-  - hierarchical comparison-unit construction (grouping atoms into word/group/paragraph/table units),
-  - word/group/paragraph/table comparison-unit modeling.
-- The core LCS/correlation engine, including:
-  - correlated-hash fast path,
-  - prefix/suffix trimming,
-  - full LCS over unresolved regions,
-  - table-specific row matching.
+- Paragraph-mark atoms: the C# emits a w:pPr atom at the end of every paragraph (even empty ones). These are needed for detecting paragraph splits/merges and ensuring empty paragraphs appear in the hierarchy. Currently absent from createAtomList.
+- The core LCS/correlation engine (see "in progress" above).
 - Reconstruction of WordprocessingML with tracked revision markup.
 - Move detection, format-change detection, and post-processing fixups.
 - Footnote/endnote reconciliation and style/numbering copy logic.
@@ -76,11 +76,12 @@ Current testing status
 - Unit tests verify preprocessing on real DOCX fixtures.
 - Unit tests verify deterministic block hashing and optional table-row hashing.
 - Unit tests verify revision-sensitive block hashing behavior (default accept mode and accept vs reject signature divergence).
-- Unit tests verify assignUnids: per-element uniqueness, cross-element-kind uniqueness, cross-part monotonicity, the unidCount invariant, valid DOCX output, and idempotency.
-- Unit tests verify createAtomList: word splitting, whitespace handling, paraUnid assignment, runPropsXml/paraPropsXml capture, break/math/image/symbol inline atoms, hyperlink recursion, revision-mode filtering, the atomCount invariant, multi-part processing (document + footnotes), table-cell coverage, and determinism. 22 tests total.
+- Unit tests verify assignUnids: per-element uniqueness, cross-element-kind uniqueness, cross-part monotonicity, the unidCount invariant (updated to count tbl/tc/txbxContent), valid DOCX output, and idempotency.
+- Unit tests verify createAtomList: word splitting, whitespace handling, paraUnid assignment, runPropsXml/paraPropsXml capture, break/math/image/symbol inline atoms, hyperlink recursion, revision-mode filtering, the atomCount invariant, multi-part processing (document + footnotes), table-cell coverage, and determinism. Also verifies ancestorKeys: standalone paragraphs emit ["p:N"], table-cell paragraphs emit ["tbl:X","tr:Y","tc:Z","p:N"], and all atoms in a paragraph share the same keys. 22 tests total.
+- Unit tests verify getComparisonUnitList: single-paragraph wrapping, word/group SHA-1 format, multi-paragraph grouping, table/row/cell/paragraph nesting, mixed paragraph-and-table top-level structure, determinism, and ancestorKey propagation. 16 tests total.
 - Characterization smoke tests verify that compareDocx runs across many real DOCX fixtures without throwing.
 - Roadmap characterization tests are still mostly todo items; they define target behavior but do not yet validate C# parity.
 
 Bottom line
 
-The port now has a real pipeline skeleton: revision preprocessing, block hashing, unid stamping, and atom list construction are all implemented and tested. The next major phase is the LCS/correlation engine, which requires hierarchical comparison-unit construction as an immediate prerequisite. Reconstruction and post-processing remain entirely unstarted.
+The port now has a real pipeline skeleton through the comparison-unit hierarchy: revision preprocessing, block hashing, unid stamping, atom list construction, and hierarchical comparison-unit tree construction are all implemented and tested. The next major phase is the LCS/correlation engine (CorrelatedSequence → ProcessCorrelatedHashes → FindCommonAtBeginningAndEnd → DoLcsAlgorithm). Reconstruction and post-processing remain entirely unstarted.

@@ -85,13 +85,14 @@ describe('assignUnids', () => {
     const docx = await loadFixture('WC', 'WC020-FootNote-Before.docx');
     const result = await assignUnids(docx);
 
+    const stampedKinds = ['p', 'tr', 'tbl', 'tc', 'txbxContent'];
     let total = 0;
     for (const partName of result.partsStamped) {
       const xml = await readDocxPartText(result.docx, partName);
       const doc = parseXml(xml);
-      const pIds = collectUnids(doc, 'p');
-      const trIds = collectUnids(doc, 'tr');
-      total += pIds.length + trIds.length;
+      for (const kind of stampedKinds) {
+        total += collectUnids(doc, kind).length;
+      }
     }
 
     expect(result.unidCount).toBe(total);

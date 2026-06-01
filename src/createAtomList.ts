@@ -28,6 +28,9 @@ export interface ComparisonUnitAtom {
   // Serialized w:pPr of the containing paragraph, or ''.
   readonly paraPropsXml: string;
   readonly partName: string;
+  // Ancestor grouping keys from outermost to innermost, e.g. ["tbl:5","tr:8","tc:11","p:14"].
+  // Used by getComparisonUnitList to build the paragraph/cell/row/table hierarchy.
+  readonly ancestorKeys: readonly string[];
 }
 
 export interface CreateAtomListOptions {
@@ -68,6 +71,28 @@ function paraUnidOf(el: Element): number {
   if (raw === null) return 0;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Elements that form the structural grouping hierarchy for comparison units.
+// Matches C# ComparisonGroupingElements: W.p, W.tbl, W.tr, W.tc, W.txbxContent.
+const GROUPING_LOCALS = new Set(['p', 'tbl', 'tr', 'tc', 'txbxContent']);
+
+// Returns ancestor grouping keys for a paragraph element, outermost first.
+// E.g. ["tbl:5","tr:8","tc:11","p:14"] for a paragraph inside a table cell.
+function ancestorKeysOf(para: Element): readonly string[] {
+  const chain: string[] = [];
+  let el: Element | null = para;
+  while (el !== null) {
+    const local = localName(el);
+    if (local === 'body' || local === 'footnotes' || local === 'endnotes' || local === 'document') break;
+    if (GROUPING_LOCALS.has(local)) {
+      const unid = el.getAttributeNS(WCT_NS, WCT_UNID_LOCAL) ?? '0';
+      chain.push(`${local}:${unid}`);
+    }
+    el = el.parentElement;
+  }
+  chain.reverse();
+  return chain;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +151,7 @@ function atomsFromRun(
   run: Element,
   paraUnid: number,
   paraPropsXml: string,
+  ancestorKeys: readonly string[],
   partName: string,
 ): ComparisonUnitAtom[] {
   const runPropsXml = firstChildXml(run, 'rPr');
@@ -141,7 +167,7 @@ function atomsFromRun(
     if (local === 't') {
       const words = (el.textContent ?? '').split(/\s+/).filter((w) => w.length > 0);
       for (const word of words) {
-        atoms.push({ kind: 'word', text: word, paraUnid, runPropsXml, paraPropsXml, partName });
+        atoms.push({ kind: 'word', text: word, paraUnid, runPropsXml, paraPropsXml, partName, ancestorKeys });
       }
       continue;
     }
@@ -150,12 +176,12 @@ function atomsFromRun(
     if (inlineKind !== undefined) {
       // Non-text inlines are identified by their serialized XML; they carry
       // the run's rPr so reconstruction can wrap them in the correct w:r.
-      atoms.push({ kind: inlineKind, text: serializeEl(el), paraUnid, runPropsXml, paraPropsXml, partName });
+      atoms.push({ kind: inlineKind, text: serializeEl(el), paraUnid, runPropsXml, paraPropsXml, partName, ancestorKeys });
       continue;
     }
 
     // Unrecognised run child — emit as other-inline so it round-trips.
-    atoms.push({ kind: 'other-inline', text: serializeEl(el), paraUnid, runPropsXml, paraPropsXml, partName });
+    atoms.push({ kind: 'other-inline', text: serializeEl(el), paraUnid, runPropsXml, paraPropsXml, partName, ancestorKeys });
   }
 
   return atoms;
@@ -165,6 +191,7 @@ function collectAtomsFromContainer(
   container: Element,
   paraUnid: number,
   paraPropsXml: string,
+  ancestorKeys: readonly string[],
   partName: string,
   out: ComparisonUnitAtom[],
 ): void {
@@ -176,18 +203,18 @@ function collectAtomsFromContainer(
     if (SKIP_IN_PARA.has(local)) continue;
 
     if (local === 'r') {
-      out.push(...atomsFromRun(el, paraUnid, paraPropsXml, partName));
+      out.push(...atomsFromRun(el, paraUnid, paraPropsXml, ancestorKeys, partName));
       continue;
     }
 
     if (RUN_CONTAINERS.has(local)) {
-      collectAtomsFromContainer(el, paraUnid, paraPropsXml, partName, out);
+      collectAtomsFromContainer(el, paraUnid, paraPropsXml, ancestorKeys, partName, out);
       continue;
     }
 
     // m:oMath is a paragraph-level math island — not inside a w:r.
     if (el.namespaceURI === M_NS && local === 'oMath') {
-      out.push({ kind: 'math', text: serializeEl(el), paraUnid, runPropsXml: '', paraPropsXml, partName });
+      out.push({ kind: 'math', text: serializeEl(el), paraUnid, runPropsXml: '', paraPropsXml, partName, ancestorKeys });
       continue;
     }
     // Anything else at paragraph level is silently skipped.
@@ -197,8 +224,9 @@ function collectAtomsFromContainer(
 function atomsFromParagraph(para: Element, partName: string): ComparisonUnitAtom[] {
   const paraUnid = paraUnidOf(para);
   const paraPropsXml = firstChildXml(para, 'pPr');
+  const ancestorKeys = ancestorKeysOf(para);
   const atoms: ComparisonUnitAtom[] = [];
-  collectAtomsFromContainer(para, paraUnid, paraPropsXml, partName, atoms);
+  collectAtomsFromContainer(para, paraUnid, paraPropsXml, ancestorKeys, partName, atoms);
   return atoms;
 }
 

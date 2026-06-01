@@ -1,6 +1,7 @@
 export { assignUnids } from './assignUnids';
 export { compareDocx } from './compareDocx';
 export { createAtomList } from './createAtomList';
+export { getComparisonUnitList } from './getComparisonUnitList';
 export { hashBlockLevelContent } from './hashBlockLevelContent';
 export { preprocessDocx } from './preprocessDocx';
 export type {
@@ -22,6 +23,12 @@ export type {
   HashBlockLevelOptions,
   HashBlockLevelResult,
 } from './hashBlockLevelContent';
+export type {
+  ComparisonUnit,
+  ComparisonUnitGroup,
+  ComparisonUnitGroupKind,
+  ComparisonUnitWord,
+} from './getComparisonUnitList';
 export type { PreprocessedDocx } from './preprocessDocx';
 export type {
   PreprocessDocxOptions,
