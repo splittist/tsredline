@@ -14,3 +14,7 @@ export type {
   HashBlockLevelResult,
 } from './hashBlockLevelContent';
 export type { PreprocessedDocx } from './preprocessDocx';
+export type {
+  PreprocessDocxOptions,
+  RevisionMode,
+} from './preprocessDocx';

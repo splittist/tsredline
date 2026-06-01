@@ -1,9 +1,12 @@
 import JSZip from 'jszip';
 
+import { preprocessRevisionMarkup, type RevisionMode } from './preprocessDocx';
+
 export interface HashBlockLevelOptions {
   readonly ignoreWhitespace?: boolean;
   readonly includeTableRows?: boolean;
   readonly minimumWordCount?: number;
+  readonly revisionMode?: RevisionMode;
 }
 
 export interface BlockHash {
@@ -106,6 +109,7 @@ export async function hashBlockLevelContent(
   const includeTableRows = options.includeTableRows ?? false;
   const ignoreWhitespace = options.ignoreWhitespace ?? true;
   const minimumWordCount = options.minimumWordCount ?? 0;
+  const revisionMode = options.revisionMode ?? 'accept';
 
   const zip = await JSZip.loadAsync(new Uint8Array(docx));
   const documentPart = zip.file('word/document.xml');
@@ -114,7 +118,8 @@ export async function hashBlockLevelContent(
   }
 
   const documentXml = await documentPart.async('text');
-  const blocks = collectBlocks(documentXml, {
+  const preprocessedXml = preprocessRevisionMarkup(documentXml, revisionMode);
+  const blocks = collectBlocks(preprocessedXml, {
     includeTableRows,
     ignoreWhitespace,
   });

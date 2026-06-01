@@ -1,0 +1,77 @@
+DOCX Comparison Port Progress
+
+Last reviewed: 2026-06-01
+
+Summary
+
+The TypeScript port is in an early but real implementation phase. The repository now has a working package scaffold, real DOCX fixture coverage, a phase-1 preprocessing pass with initial revision-mode handling, and a simplified block-hashing pass that now shares the same revision-mode preprocessing semantics. The full OpenXmlPowerTools comparison engine from the C# reference has not been ported yet.
+
+What is implemented
+
+- Package/tooling scaffold is in place for a browser-first TypeScript library: Vite, TypeScript, ESLint, Vitest, and JSZip.
+- Public API surface exists in src/index.ts with compareDocx, preprocessDocx, and hashBlockLevelContent exports.
+- preprocessDocx reads word/document.xml from a DOCX package, extracts paragraph text, optionally normalizes whitespace, and returns paragraph/word counts plus normalized text.
+- preprocessDocx now includes a first revision-preprocessing slice with revisionMode options:
+  - accept: include inserted/move-to content and drop deleted/move-from content,
+  - reject: drop inserted/move-to content and include deleted/move-from text,
+  - preserve: leave revision markup untouched before extraction.
+- New unit tests validate revision-mode behavior using synthetic DOCX XML with w:ins and w:del/w:delText.
+- hashBlockLevelContent reads word/document.xml, extracts paragraph blocks and optional table-row blocks, normalizes text, and produces deterministic SHA-1 hashes.
+- hashBlockLevelContent now supports revisionMode and preprocesses revision markup before block extraction, so hash inputs differ between accept/reject flows as expected.
+- compareDocx can:
+  - validate ArrayBuffer inputs,
+  - fall back to binary equality for non-DOCX inputs,
+  - run a DOCX-aware phase-1 comparison based on normalized document text,
+  - report coarse replace metadata for differing documents.
+- Real fixture-based tests exist for preprocessing, block hashing, and smoke coverage across a curated set of DOCX comparison cases.
+- A characterization matrix has been started in tests/fixtures/caseManifest.ts, with C#-traceable scenarios covering text edits, paragraph-boundary cases, tables, moves, footnotes/endnotes, images, and math.
+- The repo contains a call-graph document that breaks the original C# algorithm into explicit phases, which is useful as a porting roadmap.
+
+What is only partially ported
+
+- compareDocx is still a scaffold, not a full document comparison engine.
+- The current DOCX-aware mode compares normalized extracted text only; it does not produce tracked revisions, structural XML diffs, or a reconstructed DOCX output.
+- The current hashBlockLevelContent implementation is a simplified approximation of the C# phase:
+  - it hashes extracted text rather than cloned normalized OpenXML blocks,
+  - it does not propagate hashes back onto XML elements via unid correlation,
+  - it currently works only on word/document.xml,
+  - it does not process footnotes or endnotes.
+- The trackMoves option is accepted by compareDocx callers but is not used by the implementation.
+- Diagnostics/notices are placeholder status messages centered on the scaffold state.
+
+What does not appear to be ported yet
+
+- PreProcessMarkup parity with the C# implementation, including:
+  - invalid-content checks,
+  - PowerTools markup cleanup,
+  - markup simplification,
+  - unique footnote/endnote reference handling,
+  - unid stamping across content parts,
+  - external-data detachment and related package fixups.
+- Revision processing equivalents for accepting/rejecting tracked revisions before correlation.
+- Revision processing parity is still incomplete: the current implementation handles core inserted/deleted text wrappers but does not yet cover the full C# transform set (property-change elements, table/paragraph mark edge cases, styles-part handling, and broader fixups).
+- The atomization pipeline:
+  - CreateComparisonUnitAtomList,
+  - hierarchical comparison-unit construction,
+  - word/group/paragraph/table comparison-unit modeling.
+- The core LCS/correlation engine, including:
+  - correlated-hash fast path,
+  - prefix/suffix trimming,
+  - full LCS over unresolved regions,
+  - table-specific row matching.
+- Reconstruction of WordprocessingML with tracked revision markup.
+- Move detection, format-change detection, and post-processing fixups.
+- Footnote/endnote reconciliation and style/numbering copy logic.
+
+Current testing status
+
+- Unit tests verify the placeholder compareDocx behavior for identical and differing binary inputs.
+- Unit tests verify preprocessing on real DOCX fixtures.
+- Unit tests verify deterministic block hashing and optional table-row hashing.
+- Unit tests verify revision-sensitive block hashing behavior (default accept mode and accept vs reject signature divergence).
+- Characterization smoke tests verify that compareDocx runs across many real DOCX fixtures without throwing.
+- Roadmap characterization tests are still mostly todo items; they define target behavior but do not yet validate C# parity.
+
+Bottom line
+
+This repo has moved beyond a blank scaffold and now contains the first implemented comparison phases plus a useful characterization harness. However, the actual C# comparison algorithm has only been ported in a preliminary form. The remaining work is the hard part: revision preprocessing parity, structural block correlation, comparison-unit construction, LCS resolution, and tracked-revision document reconstruction.
