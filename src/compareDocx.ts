@@ -1,5 +1,8 @@
 import type { CompareOptions, CompareResult, ComparisonChange } from './types';
+import { assignUnids } from './assignUnids';
 import { correlateComparisonUnits } from './correlateComparisonUnits';
+import { createAtomList } from './createAtomList';
+import { getComparisonUnitList } from './getComparisonUnitList';
 import { preprocessDocx } from './preprocessDocx';
 import type { ComparisonUnitWord } from './getComparisonUnitList';
 import { arrayBuffersEqual } from './utils/arrayBuffer';
@@ -8,6 +11,8 @@ const SKELETON_NOTICE =
   'DOCX structural comparison is not implemented yet. This scaffold only validates inputs and reports coarse binary-level differences.';
 const PREPROCESS_NOTICE =
   'Phase-1 preprocessing is active: comparison currently uses normalized word/document.xml text while deeper structural phases are still pending.';
+const COMPARISON_UNIT_NOTICE =
+  'Comparison-unit correlation is active: assignUnids/createAtomList/getComparisonUnitList outputs are correlated to provide structural unit counts.';
 
 function isArrayBuffer(value: unknown): value is ArrayBuffer {
   return Object.prototype.toString.call(value) === '[object ArrayBuffer]';
@@ -61,7 +66,7 @@ export async function compareDocx(
 
     const baselineWords = wordsFromText(baselinePreprocessed.normalizedText);
     const candidateWords = wordsFromText(candidatePreprocessed.normalizedText);
-    const correlated = correlateComparisonUnits(
+    const correlatedTextUnits = correlateComparisonUnits(
       toWordUnits(baselineWords),
       toWordUnits(candidateWords),
     );
@@ -69,13 +74,37 @@ export async function compareDocx(
     let equalUnits = 0;
     let deletedUnits = 0;
     let insertedUnits = 0;
-    for (const segment of correlated) {
+    for (const segment of correlatedTextUnits) {
       if (segment.correlationStatus === 'equal') {
         equalUnits += segment.comparisonUnits1.length;
       } else if (segment.correlationStatus === 'deleted') {
         deletedUnits += segment.comparisonUnits1.length;
       } else if (segment.correlationStatus === 'inserted') {
         insertedUnits += segment.comparisonUnits2.length;
+      }
+    }
+
+    const baselineStamped = await assignUnids(baseline);
+    const candidateStamped = await assignUnids(candidate);
+    const baselineAtoms = await createAtomList(baselineStamped.docx);
+    const candidateAtoms = await createAtomList(candidateStamped.docx);
+    const baselineComparisonUnits = await getComparisonUnitList(baselineAtoms.atoms);
+    const candidateComparisonUnits = await getComparisonUnitList(candidateAtoms.atoms);
+    const correlatedComparisonUnits = correlateComparisonUnits(
+      baselineComparisonUnits,
+      candidateComparisonUnits,
+    );
+
+    let equalComparisonUnits = 0;
+    let deletedComparisonUnits = 0;
+    let insertedComparisonUnits = 0;
+    for (const segment of correlatedComparisonUnits) {
+      if (segment.correlationStatus === 'equal') {
+        equalComparisonUnits += segment.comparisonUnits1.length;
+      } else if (segment.correlationStatus === 'deleted') {
+        deletedComparisonUnits += segment.comparisonUnits1.length;
+      } else if (segment.correlationStatus === 'inserted') {
+        insertedComparisonUnits += segment.comparisonUnits2.length;
       }
     }
 
@@ -109,13 +138,27 @@ export async function compareDocx(
                 after: `${insertedUnits} preprocessed unit(s)`,
               });
             }
+            if (deletedComparisonUnits > 0) {
+              nextChanges.push({
+                kind: 'delete',
+                path: 'word/document.xml:comparison-units',
+                before: `${deletedComparisonUnits} comparison unit(s)`,
+              });
+            }
+            if (insertedComparisonUnits > 0) {
+              nextChanges.push({
+                kind: 'insert',
+                path: 'word/document.xml:comparison-units',
+                after: `${insertedComparisonUnits} comparison unit(s)`,
+              });
+            }
             return nextChanges;
           })(),
       notices: [
         {
           code: 'SKELETON_ENGINE',
           message: options.includeDiagnostics
-            ? `${SKELETON_NOTICE} ${PREPROCESS_NOTICE}`
+            ? `${SKELETON_NOTICE} ${PREPROCESS_NOTICE} ${COMPARISON_UNIT_NOTICE}`
             : SKELETON_NOTICE,
         },
       ],
@@ -131,6 +174,11 @@ export async function compareDocx(
         equalUnits,
         deletedUnits,
         insertedUnits,
+        baselineComparisonUnits: baselineComparisonUnits.length,
+        candidateComparisonUnits: candidateComparisonUnits.length,
+        equalComparisonUnits,
+        deletedComparisonUnits,
+        insertedComparisonUnits,
       },
     };
   } catch {

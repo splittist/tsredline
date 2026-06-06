@@ -69,6 +69,10 @@ describe('compareDocx', () => {
     expect(result.metadata.equalUnits).toBe(2);
     expect(result.metadata.deletedUnits).toBe(1);
     expect(result.metadata.insertedUnits).toBe(1);
+    expect(result.metadata.baselineComparisonUnits).toBeDefined();
+    expect(result.metadata.candidateComparisonUnits).toBeDefined();
+    expect(result.metadata.deletedComparisonUnits).toBeGreaterThan(0);
+    expect(result.metadata.insertedComparisonUnits).toBeGreaterThan(0);
     expect(result.changes).toContainEqual({
       kind: 'delete',
       path: 'word/document.xml:correlation',
@@ -78,6 +82,16 @@ describe('compareDocx', () => {
       kind: 'insert',
       path: 'word/document.xml:correlation',
       after: '1 preprocessed unit(s)',
+    });
+    expect(result.changes).toContainEqual({
+      kind: 'delete',
+      path: 'word/document.xml:comparison-units',
+      before: `${result.metadata.deletedComparisonUnits} comparison unit(s)`,
+    });
+    expect(result.changes).toContainEqual({
+      kind: 'insert',
+      path: 'word/document.xml:comparison-units',
+      after: `${result.metadata.insertedComparisonUnits} comparison unit(s)`,
     });
   });
 
@@ -106,5 +120,10 @@ describe('compareDocx', () => {
     expect(result.metadata.equalUnits).toBe(3);
     expect(result.metadata.deletedUnits).toBe(0);
     expect(result.metadata.insertedUnits).toBe(0);
+    expect(result.metadata.deletedComparisonUnits).toBe(0);
+    expect(result.metadata.insertedComparisonUnits).toBe(0);
+    expect(result.metadata.equalComparisonUnits).toBe(
+      result.metadata.baselineComparisonUnits,
+    );
   });
 });
