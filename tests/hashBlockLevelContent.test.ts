@@ -10,6 +10,14 @@ async function createSyntheticDocx(documentXml: string): Promise<ArrayBuffer> {
   return zip.generateAsync({ type: 'arraybuffer' });
 }
 
+async function createSyntheticDocxWithParts(parts: Record<string, string>): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  for (const [partName, xml] of Object.entries(parts)) {
+    zip.file(partName, xml);
+  }
+  return zip.generateAsync({ type: 'arraybuffer' });
+}
+
 describe('hashBlockLevelContent', () => {
   it('generates deterministic block hashes for the same DOCX', async () => {
     const docx = await loadFixture('WC', 'WC002-Unmodified.docx');
@@ -101,5 +109,50 @@ describe('hashBlockLevelContent', () => {
     expect(accepted.blocks[0]?.text).toBe('Alpha Beta Delta');
     expect(rejected.blocks[0]?.text).toBe('Alpha Gamma Delta');
     expect(accepted.blocks[0]?.hash).not.toBe(rejected.blocks[0]?.hash);
+  });
+
+  it('includes footnote and endnote blocks in hash output', async () => {
+    const documentXml = `
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:t>Main text</w:t></w:r></w:p>
+        </w:body>
+      </w:document>
+    `;
+
+    const first = await createSyntheticDocxWithParts({
+      'word/document.xml': documentXml,
+      'word/footnotes.xml': `
+        <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:footnote w:id="1"><w:p><w:r><w:t>Footnote Alpha</w:t></w:r></w:p></w:footnote>
+        </w:footnotes>
+      `,
+      'word/endnotes.xml': `
+        <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:endnote w:id="1"><w:p><w:r><w:t>Endnote Alpha</w:t></w:r></w:p></w:endnote>
+        </w:endnotes>
+      `,
+    });
+
+    const second = await createSyntheticDocxWithParts({
+      'word/document.xml': documentXml,
+      'word/footnotes.xml': `
+        <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:footnote w:id="1"><w:p><w:r><w:t>Footnote Beta</w:t></w:r></w:p></w:footnote>
+        </w:footnotes>
+      `,
+      'word/endnotes.xml': `
+        <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:endnote w:id="1"><w:p><w:r><w:t>Endnote Alpha</w:t></w:r></w:p></w:endnote>
+        </w:endnotes>
+      `,
+    });
+
+    const firstResult = await hashBlockLevelContent(first, { ignoreWhitespace: true });
+    const secondResult = await hashBlockLevelContent(second, { ignoreWhitespace: true });
+
+    expect(firstResult.blocks.some((b) => b.partName === 'word/footnotes.xml')).toBe(true);
+    expect(firstResult.blocks.some((b) => b.partName === 'word/endnotes.xml')).toBe(true);
+    expect(firstResult.blocks.map((b) => b.hash)).not.toEqual(secondResult.blocks.map((b) => b.hash));
   });
 });

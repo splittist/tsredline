@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 
+import { collectContentParts } from './docxParts';
 import { preprocessRevisionMarkup, type RevisionMode } from './preprocessDocx';
 
 export interface HashBlockLevelOptions {
@@ -11,6 +12,7 @@ export interface HashBlockLevelOptions {
 
 export interface BlockHash {
   readonly kind: 'paragraph' | 'table-row';
+  readonly partName: string;
   readonly index: number;
   readonly wordCount: number;
   readonly hash: string;
@@ -77,25 +79,25 @@ async function sha1Hex(value: string): Promise<string> {
 }
 
 function collectBlocks(
-  documentXml: string,
+  partXml: string,
   options: Required<Pick<HashBlockLevelOptions, 'includeTableRows' | 'ignoreWhitespace'>>,
 ): Array<{ kind: 'paragraph' | 'table-row'; text: string }> {
   const results: Array<{ kind: 'paragraph' | 'table-row'; text: string }> = [];
   const paragraphPattern = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
-  let paragraphMatch = paragraphPattern.exec(documentXml);
+  let paragraphMatch = paragraphPattern.exec(partXml);
   while (paragraphMatch) {
     const text = extractBlockText(paragraphMatch[0], options.ignoreWhitespace);
     results.push({ kind: 'paragraph', text });
-    paragraphMatch = paragraphPattern.exec(documentXml);
+    paragraphMatch = paragraphPattern.exec(partXml);
   }
 
   if (options.includeTableRows) {
     const rowPattern = /<w:tr\b[^>]*>[\s\S]*?<\/w:tr>/g;
-    let rowMatch = rowPattern.exec(documentXml);
+    let rowMatch = rowPattern.exec(partXml);
     while (rowMatch) {
       const text = extractBlockText(rowMatch[0], options.ignoreWhitespace);
       results.push({ kind: 'table-row', text });
-      rowMatch = rowPattern.exec(documentXml);
+      rowMatch = rowPattern.exec(partXml);
     }
   }
 
@@ -112,36 +114,43 @@ export async function hashBlockLevelContent(
   const revisionMode = options.revisionMode ?? 'accept';
 
   const zip = await JSZip.loadAsync(new Uint8Array(docx));
-  const documentPart = zip.file('word/document.xml');
-  if (!documentPart) {
+  if (!zip.file('word/document.xml')) {
     throw new Error('DOCX part not found: word/document.xml');
   }
 
-  const documentXml = await documentPart.async('text');
-  const preprocessedXml = preprocessRevisionMarkup(documentXml, revisionMode);
-  const blocks = collectBlocks(preprocessedXml, {
-    includeTableRows,
-    ignoreWhitespace,
-  });
-
   const hashedBlocks: BlockHash[] = [];
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index];
-    if (!block) {
-      continue;
-    }
-    const wordCount = countWords(block.text);
-    if (wordCount < minimumWordCount) {
+  for (const partName of collectContentParts(zip)) {
+    const partFile = zip.file(partName);
+    if (!partFile) {
       continue;
     }
 
-    hashedBlocks.push({
-      kind: block.kind,
-      index,
-      wordCount,
-      text: block.text,
-      hash: await sha1Hex(block.text),
+    const partXml = await partFile.async('text');
+    const preprocessedXml = preprocessRevisionMarkup(partXml, revisionMode);
+    const blocks = collectBlocks(preprocessedXml, {
+      includeTableRows,
+      ignoreWhitespace,
     });
+
+    for (let index = 0; index < blocks.length; index += 1) {
+      const block = blocks[index];
+      if (!block) {
+        continue;
+      }
+      const wordCount = countWords(block.text);
+      if (wordCount < minimumWordCount) {
+        continue;
+      }
+
+      hashedBlocks.push({
+        kind: block.kind,
+        partName,
+        index,
+        wordCount,
+        text: block.text,
+        hash: await sha1Hex(block.text),
+      });
+    }
   }
 
   return {

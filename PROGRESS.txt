@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-06 (updated 2026-06-06: roadmap characterization invariants activated)
+Last reviewed: 2026-06-06 (updated 2026-06-06: block hashing now processes all content parts)
 
 Summary
 
@@ -16,7 +16,7 @@ What is implemented
   - reject: drop inserted/move-to content and include deleted/move-from text,
   - preserve: leave revision markup untouched before extraction.
 - New unit tests validate revision-mode behavior using synthetic DOCX XML with w:ins and w:del/w:delText.
-- hashBlockLevelContent reads word/document.xml, extracts paragraph blocks and optional table-row blocks, normalizes text, and produces deterministic SHA-1 hashes.
+- hashBlockLevelContent now processes all enumerated content parts (document, footnotes, endnotes, comments, headers, footers), extracts paragraph blocks and optional table-row blocks, normalizes text, and produces deterministic SHA-1 hashes per block with source part attribution.
 - hashBlockLevelContent now supports revisionMode and preprocesses revision markup before block extraction, so hash inputs differ between accept/reject flows as expected.
 - compareDocx can:
   - validate ArrayBuffer inputs,
@@ -52,8 +52,7 @@ What is only partially ported
 - The current hashBlockLevelContent implementation is a simplified approximation of the C# phase:
   - it hashes extracted text rather than cloned normalized OpenXML blocks,
   - it does not propagate hashes back onto XML elements via unid correlation,
-  - it currently works only on word/document.xml,
-  - it does not process footnotes or endnotes.
+  - it does not yet preserve C#-style per-element hash attributes for downstream correlation/reconstruction.
 - The trackMoves option is accepted by compareDocx callers but is not used by the implementation.
 - Diagnostics/notices are placeholder status messages centered on the scaffold state.
 
@@ -80,6 +79,7 @@ Current testing status
 - Unit tests verify preprocessing on real DOCX fixtures.
 - Unit tests verify deterministic block hashing and optional table-row hashing.
 - Unit tests verify revision-sensitive block hashing behavior (default accept mode and accept vs reject signature divergence).
+- Unit tests verify hashBlockLevelContent includes footnote/endnote-derived blocks and that note-part text changes alter signatures.
 - Unit tests verify assignUnids: per-element uniqueness, cross-element-kind uniqueness, cross-part monotonicity, the unidCount invariant (updated to count tbl/tc/txbxContent), valid DOCX output, and idempotency.
 - Unit tests verify createAtomList: word splitting, whitespace handling, paraUnid assignment, runPropsXml/paraPropsXml capture, break/math/image/symbol inline atoms, hyperlink recursion, revision-mode filtering, the atomCount invariant, multi-part processing (document + footnotes), table-cell coverage, and determinism. Also verifies ancestorKeys: standalone paragraphs emit ["p:N"], table-cell paragraphs emit ["tbl:X","tr:Y","tc:Z","p:N"], and all atoms in a paragraph share the same keys. 22 tests total.
 - Unit tests verify getComparisonUnitList: single-paragraph wrapping, word/group SHA-1 format, multi-paragraph grouping, table/row/cell/paragraph nesting, mixed paragraph-and-table top-level structure, determinism, and ancestorKey propagation. 16 tests total.
