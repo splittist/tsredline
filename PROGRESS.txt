@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-06 (updated 2026-06-06: compareDocx comparison-unit correlation metadata)
+Last reviewed: 2026-06-06 (updated 2026-06-06: roadmap characterization invariants activated)
 
 Summary
 
@@ -85,7 +85,7 @@ Current testing status
 - Unit tests verify getComparisonUnitList: single-paragraph wrapping, word/group SHA-1 format, multi-paragraph grouping, table/row/cell/paragraph nesting, mixed paragraph-and-table top-level structure, determinism, and ancestorKey propagation. 16 tests total.
 - Unit tests verify correlateComparisonUnits: prefix/suffix trimming behavior, correlated-hash fast path anchoring, LCS base cases (equal/inserted/deleted), table-row LCS behavior, replacement segmentation, and deterministic transposition handling. 16 tests total.
 - Characterization smoke tests verify that compareDocx runs across many real DOCX fixtures without throwing.
-- Roadmap characterization tests are still mostly todo items; they define target behavior but do not yet validate C# parity.
+- Roadmap characterization tests are now executable across the full curated fixture matrix, validating compareDocx metadata invariants (preprocessed-text and structural comparison-unit conservation identities) on all C#-traceable pairs. They still do not yet assert full C# output parity semantics.
 
 Bottom line
 
