@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-06 (updated 2026-06-06: paragraph-mark atoms in atomization)
+Last reviewed: 2026-06-06 (updated 2026-06-06: initial correlation/LCS segmentation)
 
 Summary
 
@@ -34,12 +34,14 @@ What is implemented
 What is in progress (near-term)
 
 - Run-level unid stamping (w:r): assignUnids currently stamps only block-level elements; run-level ids are needed for reconstruction to locate source elements precisely. Can be deferred until the reconstruction phase begins.
-- The LCS/correlation engine is the next major piece:
-  - CorrelatedSequence modeling (Unknown / Equal / Deleted / Inserted states),
+- The LCS/correlation engine has an initial executable slice:
+  - CorrelatedSequence modeling (Unknown / Equal / Deleted / Inserted states) is now implemented in src/correlateComparisonUnits.ts,
+  - prefix/suffix trimming (FindCommonAtBeginningAndEnd) is implemented,
+  - core LCS segmentation over unresolved regions (DoLcsAlgorithm) is implemented.
+- Remaining correlation work:
   - correlated-hash fast path (ProcessCorrelatedHashes),
-  - prefix/suffix trimming (FindCommonAtBeginningAndEnd),
-  - full LCS over unresolved regions (DoLcsAlgorithm),
-  - table-specific row matching (DoLcsAlgorithmForTable).
+  - table-specific row matching (DoLcsAlgorithmForTable),
+  - integration of correlation output into compareDocx and reconstruction phases.
 
 What is only partially ported
 
@@ -65,7 +67,7 @@ What does not appear to be ported yet
 - The comparison engine must process headers, footers, and comments in addition to the document/footnotes/endnotes covered by the C# baseline. assignUnids already enumerates these parts; downstream phases must do the same.
 - Revision processing equivalents for accepting/rejecting tracked revisions before correlation.
 - Revision processing parity is still incomplete: the current implementation handles core inserted/deleted text wrappers but does not yet cover the full C# transform set (property-change elements, table/paragraph mark edge cases, styles-part handling, and broader fixups).
-- The core LCS/correlation engine (see "in progress" above).
+- Correlated-hash acceleration and table-specific row correlation parity.
 - Reconstruction of WordprocessingML with tracked revision markup.
 - Move detection, format-change detection, and post-processing fixups.
 - Footnote/endnote reconciliation and style/numbering copy logic.
@@ -79,9 +81,10 @@ Current testing status
 - Unit tests verify assignUnids: per-element uniqueness, cross-element-kind uniqueness, cross-part monotonicity, the unidCount invariant (updated to count tbl/tc/txbxContent), valid DOCX output, and idempotency.
 - Unit tests verify createAtomList: word splitting, whitespace handling, paraUnid assignment, runPropsXml/paraPropsXml capture, break/math/image/symbol inline atoms, hyperlink recursion, revision-mode filtering, the atomCount invariant, multi-part processing (document + footnotes), table-cell coverage, and determinism. Also verifies ancestorKeys: standalone paragraphs emit ["p:N"], table-cell paragraphs emit ["tbl:X","tr:Y","tc:Z","p:N"], and all atoms in a paragraph share the same keys. 22 tests total.
 - Unit tests verify getComparisonUnitList: single-paragraph wrapping, word/group SHA-1 format, multi-paragraph grouping, table/row/cell/paragraph nesting, mixed paragraph-and-table top-level structure, determinism, and ancestorKey propagation. 16 tests total.
+- Unit tests verify correlateComparisonUnits: prefix/suffix trimming behavior, LCS base cases (equal/inserted/deleted), replacement segmentation, and deterministic transposition handling. 9 tests total.
 - Characterization smoke tests verify that compareDocx runs across many real DOCX fixtures without throwing.
 - Roadmap characterization tests are still mostly todo items; they define target behavior but do not yet validate C# parity.
 
 Bottom line
 
-The port now has a real pipeline skeleton through the comparison-unit hierarchy: revision preprocessing, block hashing, unid stamping, atom list construction, and hierarchical comparison-unit tree construction are all implemented and tested. The next major phase is the LCS/correlation engine (CorrelatedSequence → ProcessCorrelatedHashes → FindCommonAtBeginningAndEnd → DoLcsAlgorithm). Reconstruction and post-processing remain entirely unstarted.
+The port now has a real pipeline skeleton through initial correlation: revision preprocessing, block hashing, unid stamping, atom list construction, hierarchical comparison-unit tree construction, and first-pass LCS/correlation segmentation are implemented and tested. The next major phase is correlation parity and integration (ProcessCorrelatedHashes and table-specific matching), then reconstruction and post-processing.

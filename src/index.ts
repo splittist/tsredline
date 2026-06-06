@@ -1,5 +1,10 @@
 export { assignUnids } from './assignUnids';
 export { compareDocx } from './compareDocx';
+export {
+  correlateComparisonUnits,
+  doLcsAlgorithm,
+  findCommonAtBeginningAndEnd,
+} from './correlateComparisonUnits';
 export { createAtomList } from './createAtomList';
 export { getComparisonUnitList } from './getComparisonUnitList';
 export { hashBlockLevelContent } from './hashBlockLevelContent';
@@ -12,6 +17,10 @@ export type {
   ComparisonNotice,
 } from './types';
 export type { AssignUnidsResult } from './assignUnids';
+export type {
+  CorrelatedSequence,
+  CorrelationStatus,
+} from './correlateComparisonUnits';
 export type {
   AtomKind,
   AtomListResult,

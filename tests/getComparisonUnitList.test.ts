@@ -289,7 +289,7 @@ describe('getComparisonUnitList – determinism', () => {
     const w2 = words.find((w) => w.atoms[0]!.text === 'banana');
     expect(w1).toBeDefined();
     expect(w2).toBeDefined();
-    expect(w1.sha1Hash).not.toBe(w2.sha1Hash);
+    expect(w1!.sha1Hash).not.toBe(w2!.sha1Hash);
   });
 });
 
