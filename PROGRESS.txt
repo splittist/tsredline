@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-06 (updated 2026-06-06: initial correlation/LCS segmentation)
+Last reviewed: 2026-06-06 (updated 2026-06-06: compareDocx correlation integration)
 
 Summary
 
@@ -22,7 +22,8 @@ What is implemented
   - validate ArrayBuffer inputs,
   - fall back to binary equality for non-DOCX inputs,
   - run a DOCX-aware phase-1 comparison based on normalized document text,
-  - report coarse replace metadata for differing documents.
+  - report coarse replace metadata for differing documents,
+  - compute and report correlation-derived unit counts (equal/deleted/inserted) from the new LCS segmentation pass in preprocessed-text mode.
 - Real fixture-based tests exist for preprocessing, block hashing, and smoke coverage across a curated set of DOCX comparison cases.
 - A characterization matrix has been started in tests/fixtures/caseManifest.ts, with C#-traceable scenarios covering text edits, paragraph-boundary cases, tables, moves, footnotes/endnotes, images, and math.
 - The repo contains a call-graph document that breaks the original C# algorithm into explicit phases, which is useful as a porting roadmap.
@@ -41,7 +42,7 @@ What is in progress (near-term)
 - Remaining correlation work:
   - correlated-hash fast path (ProcessCorrelatedHashes),
   - table-specific row matching (DoLcsAlgorithmForTable),
-  - integration of correlation output into compareDocx and reconstruction phases.
+  - integration of correlation output into reconstruction phases.
 
 What is only partially ported
 
@@ -74,7 +75,7 @@ What does not appear to be ported yet
 
 Current testing status
 
-- Unit tests verify the placeholder compareDocx behavior for identical and differing binary inputs.
+- Unit tests verify compareDocx for binary fallback behavior and DOCX-mode correlation metadata (unit totals and inserted/deleted/equal counts).
 - Unit tests verify preprocessing on real DOCX fixtures.
 - Unit tests verify deterministic block hashing and optional table-row hashing.
 - Unit tests verify revision-sensitive block hashing behavior (default accept mode and accept vs reject signature divergence).
@@ -87,4 +88,4 @@ Current testing status
 
 Bottom line
 
-The port now has a real pipeline skeleton through initial correlation: revision preprocessing, block hashing, unid stamping, atom list construction, hierarchical comparison-unit tree construction, and first-pass LCS/correlation segmentation are implemented and tested. The next major phase is correlation parity and integration (ProcessCorrelatedHashes and table-specific matching), then reconstruction and post-processing.
+The port now has a real pipeline skeleton through initial correlation integration: revision preprocessing, block hashing, unid stamping, atom list construction, hierarchical comparison-unit tree construction, first-pass LCS/correlation segmentation, and compareDocx correlation metadata reporting are implemented and tested. The next major phase is correlation parity (ProcessCorrelatedHashes and table-specific matching), then reconstruction and post-processing.

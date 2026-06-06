@@ -1,5 +1,7 @@
 import type { CompareOptions, CompareResult } from './types';
+import { correlateComparisonUnits } from './correlateComparisonUnits';
 import { preprocessDocx } from './preprocessDocx';
+import type { ComparisonUnitWord } from './getComparisonUnitList';
 import { arrayBuffersEqual } from './utils/arrayBuffer';
 
 const SKELETON_NOTICE =
@@ -15,6 +17,18 @@ function assertArrayBuffer(value: ArrayBuffer, label: string): void {
   if (!isArrayBuffer(value)) {
     throw new TypeError(`${label} must be an ArrayBuffer.`);
   }
+}
+
+function wordsFromText(text: string): readonly string[] {
+  return text.split(/\s+/).filter((w) => w.length > 0);
+}
+
+function toWordUnits(words: readonly string[]): readonly ComparisonUnitWord[] {
+  return words.map((word) => ({
+    kind: 'word',
+    sha1Hash: word,
+    atoms: [],
+  }));
 }
 
 export async function compareDocx(
@@ -45,6 +59,26 @@ export async function compareDocx(
     const equal =
       baselinePreprocessed.normalizedText === candidatePreprocessed.normalizedText;
 
+    const baselineWords = wordsFromText(baselinePreprocessed.normalizedText);
+    const candidateWords = wordsFromText(candidatePreprocessed.normalizedText);
+    const correlated = correlateComparisonUnits(
+      toWordUnits(baselineWords),
+      toWordUnits(candidateWords),
+    );
+
+    let equalUnits = 0;
+    let deletedUnits = 0;
+    let insertedUnits = 0;
+    for (const segment of correlated) {
+      if (segment.correlationStatus === 'equal') {
+        equalUnits += segment.comparisonUnits1.length;
+      } else if (segment.correlationStatus === 'deleted') {
+        deletedUnits += segment.comparisonUnits1.length;
+      } else if (segment.correlationStatus === 'inserted') {
+        insertedUnits += segment.comparisonUnits2.length;
+      }
+    }
+
     return {
       equal,
       summary: equal
@@ -52,14 +86,31 @@ export async function compareDocx(
         : 'Preprocessed document text differs. Deeper XML-structure diff phases are still pending.',
       changes: equal
         ? []
-        : [
-            {
-              kind: 'replace',
-              path: 'word/document.xml:text',
-              before: `${baselinePreprocessed.wordCount} words in ${baselinePreprocessed.paragraphCount} paragraphs`,
-              after: `${candidatePreprocessed.wordCount} words in ${candidatePreprocessed.paragraphCount} paragraphs`,
-            },
-          ],
+        : (() => {
+            const nextChanges = [
+              {
+                kind: 'replace' as const,
+                path: 'word/document.xml:text',
+                before: `${baselinePreprocessed.wordCount} words in ${baselinePreprocessed.paragraphCount} paragraphs`,
+                after: `${candidatePreprocessed.wordCount} words in ${candidatePreprocessed.paragraphCount} paragraphs`,
+              },
+            ];
+            if (deletedUnits > 0) {
+              nextChanges.push({
+                kind: 'delete' as const,
+                path: 'word/document.xml:correlation',
+                before: `${deletedUnits} preprocessed unit(s)`,
+              });
+            }
+            if (insertedUnits > 0) {
+              nextChanges.push({
+                kind: 'insert' as const,
+                path: 'word/document.xml:correlation',
+                after: `${insertedUnits} preprocessed unit(s)`,
+              });
+            }
+            return nextChanges;
+          })(),
       notices: [
         {
           code: 'SKELETON_ENGINE',
@@ -75,6 +126,11 @@ export async function compareDocx(
         comparisonMode: 'preprocessed-text',
         baselineParagraphs: baselinePreprocessed.paragraphCount,
         candidateParagraphs: candidatePreprocessed.paragraphCount,
+        baselineUnits: baselineWords.length,
+        candidateUnits: candidateWords.length,
+        equalUnits,
+        deletedUnits,
+        insertedUnits,
       },
     };
   } catch {

@@ -23,6 +23,11 @@ export interface ComparisonMetadata {
   readonly comparisonMode?: 'preprocessed-text' | 'binary-fallback';
   readonly baselineParagraphs?: number;
   readonly candidateParagraphs?: number;
+  readonly baselineUnits?: number;
+  readonly candidateUnits?: number;
+  readonly equalUnits?: number;
+  readonly deletedUnits?: number;
+  readonly insertedUnits?: number;
 }
 
 export interface CompareResult {
