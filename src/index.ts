@@ -2,6 +2,7 @@ export { assignUnids } from './assignUnids';
 export { compareDocx } from './compareDocx';
 export {
   correlateComparisonUnits,
+  doLcsAlgorithmForTable,
   doLcsAlgorithm,
   findCommonAtBeginningAndEnd,
   processCorrelatedHashes,

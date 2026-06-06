@@ -1,4 +1,4 @@
-import type { CompareOptions, CompareResult } from './types';
+import type { CompareOptions, CompareResult, ComparisonChange } from './types';
 import { correlateComparisonUnits } from './correlateComparisonUnits';
 import { preprocessDocx } from './preprocessDocx';
 import type { ComparisonUnitWord } from './getComparisonUnitList';
@@ -87,9 +87,9 @@ export async function compareDocx(
       changes: equal
         ? []
         : (() => {
-            const nextChanges = [
+            const nextChanges: ComparisonChange[] = [
               {
-                kind: 'replace' as const,
+                kind: 'replace',
                 path: 'word/document.xml:text',
                 before: `${baselinePreprocessed.wordCount} words in ${baselinePreprocessed.paragraphCount} paragraphs`,
                 after: `${candidatePreprocessed.wordCount} words in ${candidatePreprocessed.paragraphCount} paragraphs`,
@@ -97,14 +97,14 @@ export async function compareDocx(
             ];
             if (deletedUnits > 0) {
               nextChanges.push({
-                kind: 'delete' as const,
+                kind: 'delete',
                 path: 'word/document.xml:correlation',
                 before: `${deletedUnits} preprocessed unit(s)`,
               });
             }
             if (insertedUnits > 0) {
               nextChanges.push({
-                kind: 'insert' as const,
+                kind: 'insert',
                 path: 'word/document.xml:correlation',
                 after: `${insertedUnits} preprocessed unit(s)`,
               });

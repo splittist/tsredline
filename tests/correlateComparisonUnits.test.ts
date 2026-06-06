@@ -3,12 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   correlateComparisonUnits,
   doLcsAlgorithm,
+  doLcsAlgorithmForTable,
   findCommonAtBeginningAndEnd,
   processCorrelatedHashes,
   type CorrelatedSequence,
   type CorrelationStatus,
 } from '../src/correlateComparisonUnits';
-import type { ComparisonUnitWord } from '../src/getComparisonUnitList';
+import type {
+  ComparisonUnit,
+  ComparisonUnitGroup,
+  ComparisonUnitWord,
+} from '../src/getComparisonUnitList';
 
 function makeWord(hash: string): ComparisonUnitWord {
   return {
@@ -28,6 +33,40 @@ function unknown(left: readonly string[], right: readonly string[]): CorrelatedS
     comparisonUnits1: left.map(makeWord),
     comparisonUnits2: right.map(makeWord),
   };
+}
+
+function makeRow(wordHashes: readonly string[]): ComparisonUnitGroup {
+  const words: ComparisonUnitWord[] = wordHashes.map((hash) => makeWord(hash));
+  const paragraph: ComparisonUnitGroup = {
+    kind: 'paragraph',
+    sha1Hash: `p:${wordHashes.join('|')}`,
+    contents: words,
+  };
+  const cell: ComparisonUnitGroup = {
+    kind: 'cell',
+    sha1Hash: `c:${wordHashes.join('|')}`,
+    contents: [paragraph],
+  };
+  return {
+    kind: 'row',
+    sha1Hash: `r:${wordHashes.join('|')}`,
+    contents: [cell],
+  };
+}
+
+function unknownRows(
+  left: readonly (readonly string[])[],
+  right: readonly (readonly string[])[],
+): CorrelatedSequence {
+  return {
+    correlationStatus: 'unknown',
+    comparisonUnits1: left.map(makeRow),
+    comparisonUnits2: right.map(makeRow),
+  };
+}
+
+function countUnits(units: readonly ComparisonUnit[]): number {
+  return units.length;
 }
 
 describe('findCommonAtBeginningAndEnd', () => {
@@ -77,6 +116,39 @@ describe('doLcsAlgorithm', () => {
     expect(statuses(result)).toEqual(['deleted']);
     expect(result[0]!.comparisonUnits1).toHaveLength(2);
     expect(result[0]!.comparisonUnits2).toHaveLength(0);
+  });
+});
+
+describe('doLcsAlgorithmForTable', () => {
+  it('matches rows with partial word overlap as equal anchors', () => {
+    const result = doLcsAlgorithmForTable(
+      unknownRows(
+        [
+          ['A', 'B'],
+          ['C', 'D'],
+        ],
+        [
+          ['A', 'X'],
+          ['C', 'D'],
+        ],
+      ),
+    );
+
+    expect(statuses(result)).toEqual(['equal']);
+    expect(countUnits(result[0]!.comparisonUnits1)).toBe(2);
+    expect(countUnits(result[0]!.comparisonUnits2)).toBe(2);
+  });
+
+  it('falls back to inserted/deleted when rows are dissimilar', () => {
+    const result = doLcsAlgorithmForTable(
+      unknownRows([
+        ['LEFT'],
+      ], [
+        ['RIGHT'],
+      ]),
+    );
+
+    expect(statuses(result)).toEqual(['deleted', 'inserted']);
   });
 });
 
@@ -153,5 +225,22 @@ describe('correlateComparisonUnits', () => {
     );
 
     expect(statuses(result)).toEqual(['equal', 'deleted', 'inserted', 'equal']);
+  });
+
+  it('uses table-row LCS to keep similar rows aligned as equal segments', () => {
+    const result = correlateComparisonUnits(
+      [
+        ['A', 'B'],
+        ['C', 'D'],
+      ].map(makeRow),
+      [
+        ['A', 'X'],
+        ['C', 'D'],
+      ].map(makeRow),
+    );
+
+    expect(statuses(result)).toEqual(['equal']);
+    expect(result[0]!.comparisonUnits1).toHaveLength(2);
+    expect(result[0]!.comparisonUnits2).toHaveLength(2);
   });
 });

@@ -8,6 +8,71 @@ export interface CorrelatedSequence {
   readonly comparisonUnits2: readonly ComparisonUnit[];
 }
 
+function isGroupUnit(unit: ComparisonUnit): unit is Exclude<ComparisonUnit, { kind: 'word' }> {
+  return unit.kind !== 'word';
+}
+
+function isRowGroupUnit(unit: ComparisonUnit): boolean {
+  return isGroupUnit(unit) && unit.kind === 'row';
+}
+
+function allRowGroupUnits(units: readonly ComparisonUnit[]): boolean {
+  return units.every((unit) => isRowGroupUnit(unit));
+}
+
+function flattenWordHashes(unit: ComparisonUnit): readonly string[] {
+  if (unit.kind === 'word') {
+    return [unit.sha1Hash];
+  }
+
+  const result: string[] = [];
+  for (const child of unit.contents) {
+    result.push(...flattenWordHashes(child));
+  }
+  return result;
+}
+
+function lcsLengthHashes(left: readonly string[], right: readonly string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    return 0;
+  }
+
+  const rows = left.length + 1;
+  const cols = right.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => 0),
+  );
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      if (left[i - 1] === right[j - 1]) {
+        dp[i]![j] = (dp[i - 1]![j - 1] ?? 0) + 1;
+      } else {
+        dp[i]![j] = Math.max(dp[i - 1]![j] ?? 0, dp[i]![j - 1] ?? 0);
+      }
+    }
+  }
+
+  return dp[left.length]![right.length] ?? 0;
+}
+
+function rowSimilarity(left: ComparisonUnit, right: ComparisonUnit): number {
+  const leftWords = flattenWordHashes(left);
+  const rightWords = flattenWordHashes(right);
+
+  if (leftWords.length === 0 && rightWords.length === 0) {
+    return 1;
+  }
+
+  const lcs = lcsLengthHashes(leftWords, rightWords);
+  const denominator = Math.max(leftWords.length, rightWords.length);
+  if (denominator === 0) {
+    return 0;
+  }
+
+  return lcs / denominator;
+}
+
 function hashesEqual(left: ComparisonUnit, right: ComparisonUnit): boolean {
   return left.sha1Hash === right.sha1Hash;
 }
@@ -320,6 +385,107 @@ export function doLcsAlgorithm(
   }));
 }
 
+export function doLcsAlgorithmForTable(
+  unknown: CorrelatedSequence,
+  minimumRowSimilarity = 0.5,
+): readonly CorrelatedSequence[] {
+  const left = unknown.comparisonUnits1;
+  const right = unknown.comparisonUnits2;
+
+  if (unknown.correlationStatus !== 'unknown') {
+    return [unknown];
+  }
+
+  if (left.length === 0 && right.length === 0) {
+    return [];
+  }
+
+  if (left.length === 0) {
+    return [
+      {
+        correlationStatus: 'inserted',
+        comparisonUnits1: [],
+        comparisonUnits2: right,
+      },
+    ];
+  }
+
+  if (right.length === 0) {
+    return [
+      {
+        correlationStatus: 'deleted',
+        comparisonUnits1: left,
+        comparisonUnits2: [],
+      },
+    ];
+  }
+
+  if (!allRowGroupUnits(left) || !allRowGroupUnits(right)) {
+    return doLcsAlgorithm(unknown);
+  }
+
+  const rows = left.length + 1;
+  const cols = right.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => 0),
+  );
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const similarity = rowSimilarity(left[i - 1]!, right[j - 1]!);
+      if (similarity >= minimumRowSimilarity) {
+        dp[i]![j] = (dp[i - 1]![j - 1] ?? 0) + 1;
+      } else {
+        dp[i]![j] = Math.max(dp[i - 1]![j] ?? 0, dp[i]![j - 1] ?? 0);
+      }
+    }
+  }
+
+  const reversed: CorrelatedSequence[] = [];
+  let i = left.length;
+  let j = right.length;
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0) {
+      const similarity = rowSimilarity(left[i - 1]!, right[j - 1]!);
+      if (similarity >= minimumRowSimilarity) {
+        pushOrMerge(reversed, {
+          correlationStatus: 'equal',
+          comparisonUnits1: [left[i - 1]!],
+          comparisonUnits2: [right[j - 1]!],
+        });
+        i -= 1;
+        j -= 1;
+        continue;
+      }
+    }
+
+    const up = i > 0 ? (dp[i - 1]![j] ?? 0) : -1;
+    const leftward = j > 0 ? (dp[i]![j - 1] ?? 0) : -1;
+    if (i > 0 && (j === 0 || up > leftward)) {
+      pushOrMerge(reversed, {
+        correlationStatus: 'deleted',
+        comparisonUnits1: [left[i - 1]!],
+        comparisonUnits2: [],
+      });
+      i -= 1;
+    } else if (j > 0) {
+      pushOrMerge(reversed, {
+        correlationStatus: 'inserted',
+        comparisonUnits1: [],
+        comparisonUnits2: [right[j - 1]!],
+      });
+      j -= 1;
+    }
+  }
+
+  return reversed.reverse().map((segment) => ({
+    correlationStatus: segment.correlationStatus,
+    comparisonUnits1: [...segment.comparisonUnits1].reverse(),
+    comparisonUnits2: [...segment.comparisonUnits2].reverse(),
+  }));
+}
+
 export function correlateComparisonUnits(
   comparisonUnits1: readonly ComparisonUnit[],
   comparisonUnits2: readonly ComparisonUnit[],
@@ -345,7 +511,13 @@ export function correlateComparisonUnits(
         const retrimmed = findCommonAtBeginningAndEnd(fastSegment);
         for (const retrimmedSegment of retrimmed) {
           if (retrimmedSegment.correlationStatus === 'unknown') {
-            for (const lcsSegment of doLcsAlgorithm(retrimmedSegment)) {
+            const lcsSegments =
+              allRowGroupUnits(retrimmedSegment.comparisonUnits1) &&
+              allRowGroupUnits(retrimmedSegment.comparisonUnits2)
+                ? doLcsAlgorithmForTable(retrimmedSegment)
+                : doLcsAlgorithm(retrimmedSegment);
+
+            for (const lcsSegment of lcsSegments) {
               pushOrMerge(resolved, lcsSegment);
             }
           } else {
