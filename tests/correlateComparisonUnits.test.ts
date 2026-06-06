@@ -4,6 +4,7 @@ import {
   correlateComparisonUnits,
   doLcsAlgorithm,
   findCommonAtBeginningAndEnd,
+  processCorrelatedHashes,
   type CorrelatedSequence,
   type CorrelationStatus,
 } from '../src/correlateComparisonUnits';
@@ -79,6 +80,37 @@ describe('doLcsAlgorithm', () => {
   });
 });
 
+describe('processCorrelatedHashes', () => {
+  it('anchors unique matching hashes as equal and leaves surrounding unknown spans', () => {
+    const result = processCorrelatedHashes(
+      unknown(['X', 'A', 'B', 'Y'], ['Q', 'A', 'B', 'R']),
+    );
+
+    expect(statuses(result)).toEqual(['unknown', 'equal', 'unknown']);
+    expect(result[0]!.comparisonUnits1).toHaveLength(1);
+    expect(result[0]!.comparisonUnits2).toHaveLength(1);
+    expect(result[1]!.comparisonUnits1.map((u) => u.sha1Hash)).toEqual(['A', 'B']);
+  });
+
+  it('ignores duplicated hashes but still anchors other unique hashes', () => {
+    const result = processCorrelatedHashes(
+      unknown(['A', 'A', 'B'], ['A', 'A', 'B']),
+    );
+
+    expect(statuses(result)).toEqual(['unknown', 'equal']);
+    expect(result[1]!.comparisonUnits1[0]!.sha1Hash).toBe('B');
+  });
+
+  it('uses only monotonic anchors when right-side positions cross', () => {
+    const result = processCorrelatedHashes(
+      unknown(['A', 'B'], ['B', 'A']),
+    );
+
+    expect(statuses(result)).toEqual(['inserted', 'equal', 'deleted']);
+    expect(result[1]!.comparisonUnits1[0]!.sha1Hash).toBe('A');
+  });
+});
+
 describe('correlateComparisonUnits', () => {
   it('splits a single replacement into deleted + inserted with equal context', () => {
     const result = correlateComparisonUnits(
@@ -111,6 +143,15 @@ describe('correlateComparisonUnits', () => {
     const run2 = correlateComparisonUnits(left, right);
 
     expect(statuses(run1)).toEqual(statuses(run2));
-    expect(statuses(run1)).toEqual(['deleted', 'equal', 'inserted', 'equal']);
+    expect(statuses(run1)).toEqual(['inserted', 'equal', 'deleted', 'equal']);
+  });
+
+  it('resolves long middle spans via hash anchors before LCS', () => {
+    const result = correlateComparisonUnits(
+      ['start', 'A', 'left-only', 'B', 'end'].map(makeWord),
+      ['start', 'A', 'right-only', 'B', 'end'].map(makeWord),
+    );
+
+    expect(statuses(result)).toEqual(['equal', 'deleted', 'inserted', 'equal']);
   });
 });

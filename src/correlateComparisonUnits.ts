@@ -29,6 +29,132 @@ function pushOrMerge(
   };
 }
 
+function splitUnknownRange(
+  left: readonly ComparisonUnit[],
+  right: readonly ComparisonUnit[],
+): readonly CorrelatedSequence[] {
+  if (left.length > 0 && right.length > 0) {
+    return [
+      {
+        correlationStatus: 'unknown',
+        comparisonUnits1: left,
+        comparisonUnits2: right,
+      },
+    ];
+  }
+
+  if (left.length > 0) {
+    return [
+      {
+        correlationStatus: 'deleted',
+        comparisonUnits1: left,
+        comparisonUnits2: [],
+      },
+    ];
+  }
+
+  if (right.length > 0) {
+    return [
+      {
+        correlationStatus: 'inserted',
+        comparisonUnits1: [],
+        comparisonUnits2: right,
+      },
+    ];
+  }
+
+  return [];
+}
+
+export function processCorrelatedHashes(
+  unknown: CorrelatedSequence,
+): readonly CorrelatedSequence[] {
+  if (unknown.correlationStatus !== 'unknown') {
+    return [unknown];
+  }
+
+  const left = unknown.comparisonUnits1;
+  const right = unknown.comparisonUnits2;
+
+  const leftPos = new Map<string, number[]>();
+  const rightPos = new Map<string, number[]>();
+
+  for (let i = 0; i < left.length; i += 1) {
+    const hash = left[i]!.sha1Hash;
+    const arr = leftPos.get(hash) ?? [];
+    arr.push(i);
+    leftPos.set(hash, arr);
+  }
+
+  for (let i = 0; i < right.length; i += 1) {
+    const hash = right[i]!.sha1Hash;
+    const arr = rightPos.get(hash) ?? [];
+    arr.push(i);
+    rightPos.set(hash, arr);
+  }
+
+  const candidates: Array<{ leftIndex: number; rightIndex: number }> = [];
+  for (const [hash, leftIndexes] of leftPos) {
+    if (leftIndexes.length !== 1) continue;
+    const rightIndexes = rightPos.get(hash);
+    if (rightIndexes === undefined || rightIndexes.length !== 1) continue;
+    candidates.push({
+      leftIndex: leftIndexes[0]!,
+      rightIndex: rightIndexes[0]!,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return [unknown];
+  }
+
+  candidates.sort((a, b) => a.leftIndex - b.leftIndex);
+
+  // Keep anchors in monotonic right-side order to avoid crossing matches.
+  const anchors: Array<{ leftIndex: number; rightIndex: number }> = [];
+  let lastRight = -1;
+  for (const c of candidates) {
+    if (c.rightIndex > lastRight) {
+      anchors.push(c);
+      lastRight = c.rightIndex;
+    }
+  }
+
+  if (anchors.length === 0) {
+    return [unknown];
+  }
+
+  const result: CorrelatedSequence[] = [];
+  let cursorLeft = 0;
+  let cursorRight = 0;
+
+  for (const anchor of anchors) {
+    const beforeLeft = left.slice(cursorLeft, anchor.leftIndex);
+    const beforeRight = right.slice(cursorRight, anchor.rightIndex);
+    for (const seg of splitUnknownRange(beforeLeft, beforeRight)) {
+      pushOrMerge(result, seg);
+    }
+
+    pushOrMerge(result, {
+      correlationStatus: 'equal',
+      comparisonUnits1: [left[anchor.leftIndex]!],
+      comparisonUnits2: [right[anchor.rightIndex]!],
+    });
+
+    cursorLeft = anchor.leftIndex + 1;
+    cursorRight = anchor.rightIndex + 1;
+  }
+
+  for (const seg of splitUnknownRange(
+    left.slice(cursorLeft),
+    right.slice(cursorRight),
+  )) {
+    pushOrMerge(result, seg);
+  }
+
+  return result.length > 0 ? result : [unknown];
+}
+
 export function findCommonAtBeginningAndEnd(
   unknown: CorrelatedSequence,
 ): readonly CorrelatedSequence[] {
@@ -209,8 +335,23 @@ export function correlateComparisonUnits(
 
   for (const segment of trimmed) {
     if (segment.correlationStatus === 'unknown') {
-      for (const lcsSegment of doLcsAlgorithm(segment)) {
-        pushOrMerge(resolved, lcsSegment);
+      const fastPathSegments = processCorrelatedHashes(segment);
+      for (const fastSegment of fastPathSegments) {
+        if (fastSegment.correlationStatus !== 'unknown') {
+          pushOrMerge(resolved, fastSegment);
+          continue;
+        }
+
+        const retrimmed = findCommonAtBeginningAndEnd(fastSegment);
+        for (const retrimmedSegment of retrimmed) {
+          if (retrimmedSegment.correlationStatus === 'unknown') {
+            for (const lcsSegment of doLcsAlgorithm(retrimmedSegment)) {
+              pushOrMerge(resolved, lcsSegment);
+            }
+          } else {
+            pushOrMerge(resolved, retrimmedSegment);
+          }
+        }
       }
     } else {
       pushOrMerge(resolved, segment);

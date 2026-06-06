@@ -4,6 +4,7 @@ export {
   correlateComparisonUnits,
   doLcsAlgorithm,
   findCommonAtBeginningAndEnd,
+  processCorrelatedHashes,
 } from './correlateComparisonUnits';
 export { createAtomList } from './createAtomList';
 export { getComparisonUnitList } from './getComparisonUnitList';
