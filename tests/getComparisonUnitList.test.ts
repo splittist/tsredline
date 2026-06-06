@@ -45,6 +45,13 @@ function asWord(unit: ComparisonUnit): ComparisonUnitWord {
   return unit as ComparisonUnitWord;
 }
 
+function wordsInGroup(group: ComparisonUnitGroup): ComparisonUnitWord[] {
+  return group.contents
+    .filter((unit) => unit.kind === 'word')
+    .map(asWord)
+    .filter((word) => word.atoms[0]?.kind === 'word');
+}
+
 // ---------------------------------------------------------------------------
 // Single paragraph
 // ---------------------------------------------------------------------------
@@ -60,9 +67,10 @@ describe('getComparisonUnitList – single paragraph', () => {
     expect(units).toHaveLength(1);
     const para = asGroup(units[0]!);
     expect(para.kind).toBe('paragraph');
-    expect(para.contents).toHaveLength(2);
-    expect(asWord(para.contents[0]!).atoms[0]!.text).toBe('hello');
-    expect(asWord(para.contents[1]!).atoms[0]!.text).toBe('world');
+    const words = wordsInGroup(para);
+    expect(words).toHaveLength(2);
+    expect(words[0]!.atoms[0]!.text).toBe('hello');
+    expect(words[1]!.atoms[0]!.text).toBe('world');
   });
 
   it('every word unit wraps exactly one atom', async () => {
@@ -276,8 +284,11 @@ describe('getComparisonUnitList – determinism', () => {
     const units = await getComparisonUnitList(atoms);
 
     const para = asGroup(units[0]!);
-    const w1 = asWord(para.contents[0]!);
-    const w2 = asWord(para.contents[1]!);
+    const words = wordsInGroup(para);
+    const w1 = words.find((w) => w.atoms[0]!.text === 'apple');
+    const w2 = words.find((w) => w.atoms[0]!.text === 'banana');
+    expect(w1).toBeDefined();
+    expect(w2).toBeDefined();
     expect(w1.sha1Hash).not.toBe(w2.sha1Hash);
   });
 });
@@ -294,8 +305,9 @@ describe('createAtomList – ancestorKeys', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(1);
-    const keys = atoms[0]!.ancestorKeys;
+    const wordAtom = atoms.find((a) => a.kind === 'word');
+    expect(wordAtom).toBeDefined();
+    const keys = wordAtom!.ancestorKeys;
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^p:\d+$/);
   });
@@ -313,8 +325,9 @@ describe('createAtomList – ancestorKeys', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(1);
-    const keys = atoms[0]!.ancestorKeys;
+    const wordAtom = atoms.find((a) => a.kind === 'word');
+    expect(wordAtom).toBeDefined();
+    const keys = wordAtom!.ancestorKeys;
     expect(keys).toHaveLength(4);
     expect(keys[0]).toMatch(/^tbl:\d+$/);
     expect(keys[1]).toMatch(/^tr:\d+$/);
@@ -329,8 +342,9 @@ describe('createAtomList – ancestorKeys', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    const firstKeys = atoms[0]!.ancestorKeys;
-    for (const atom of atoms) {
+    const words = atoms.filter((a) => a.kind === 'word');
+    const firstKeys = words[0]!.ancestorKeys;
+    for (const atom of words) {
       expect(atom.ancestorKeys).toEqual(firstKeys);
     }
   });

@@ -9,6 +9,7 @@ const M_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
 
 export type AtomKind =
   | 'word'
+  | 'paragraph-mark'
   | 'image'
   | 'math'
   | 'field-char'
@@ -18,8 +19,9 @@ export type AtomKind =
 
 export interface ComparisonUnitAtom {
   readonly kind: AtomKind;
-  // For 'word': the word string. For non-text kinds: serialized element XML
-  // (used as the identity key during LCS comparison).
+  // For 'word': the word string. For 'paragraph-mark': serialized pPr XML
+  // when present, else '<w:pPr/>'. For non-text kinds: serialized element XML.
+  // This key is used as atom identity during LCS comparison.
   readonly text: string;
   // wct:id of the enclosing w:p, as stamped by assignUnids. 0 if unstamped.
   readonly paraUnid: number;
@@ -227,6 +229,17 @@ function atomsFromParagraph(para: Element, partName: string): ComparisonUnitAtom
   const ancestorKeys = ancestorKeysOf(para);
   const atoms: ComparisonUnitAtom[] = [];
   collectAtomsFromContainer(para, paraUnid, paraPropsXml, ancestorKeys, partName, atoms);
+  // Mirror C# behavior by emitting one paragraph mark atom per paragraph,
+  // including empty/whitespace-only paragraphs.
+  atoms.push({
+    kind: 'paragraph-mark',
+    text: paraPropsXml.length > 0 ? paraPropsXml : '<w:pPr/>',
+    paraUnid,
+    runPropsXml: '',
+    paraPropsXml,
+    partName,
+    ancestorKeys,
+  });
   return atoms;
 }
 

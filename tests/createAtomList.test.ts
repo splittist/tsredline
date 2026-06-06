@@ -37,8 +37,9 @@ describe('createAtomList – word splitting', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms.map((a) => a.text)).toEqual(['hello', 'world', 'foo']);
-    expect(atoms.every((a) => a.kind === 'word')).toBe(true);
+    expect(atoms.map((a) => a.text)).toEqual(['hello', 'world', 'foo', '<w:pPr/>']);
+    expect(atoms.slice(0, 3).every((a) => a.kind === 'word')).toBe(true);
+    expect(atoms[3]!.kind).toBe('paragraph-mark');
   });
 
   it('handles leading/trailing whitespace in w:t correctly', async () => {
@@ -48,7 +49,7 @@ describe('createAtomList – word splitting', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms.map((a) => a.text)).toEqual(['alpha', 'beta']);
+    expect(atoms.filter((a) => a.kind === 'word').map((a) => a.text)).toEqual(['alpha', 'beta']);
   });
 
   it('concatenates words from consecutive runs in the same paragraph', async () => {
@@ -62,17 +63,18 @@ describe('createAtomList – word splitting', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms.map((a) => a.text)).toEqual(['one', 'two', 'three']);
+    expect(atoms.filter((a) => a.kind === 'word').map((a) => a.text)).toEqual(['one', 'two', 'three']);
   });
 
-  it('produces no atoms for a whitespace-only paragraph', async () => {
+  it('emits only a paragraph-mark atom for a whitespace-only paragraph', async () => {
     const docx = await stampedDocx(`
       <w:document ${W}><w:body>
         <w:p><w:r><w:t>   </w:t></w:r></w:p>
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(0);
+    expect(atoms).toHaveLength(1);
+    expect(atoms[0]!.kind).toBe('paragraph-mark');
   });
 });
 
@@ -89,12 +91,12 @@ describe('createAtomList – paraUnid', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(2);
-    const [a, b] = atoms as [typeof atoms[0], typeof atoms[0]];
+    const words = atoms.filter((a) => a.kind === 'word');
+    expect(words).toHaveLength(2);
+    const [a, b] = words as [typeof words[0], typeof words[0]];
     expect(a.paraUnid).toBeGreaterThan(0);
     expect(b.paraUnid).toBeGreaterThan(0);
     expect(a.paraUnid).not.toBe(b.paraUnid);
-    // All words within each paragraph share the same paraUnid.
     expect(a.text).toBe('alpha');
     expect(b.text).toBe('beta');
   });
@@ -109,8 +111,9 @@ describe('createAtomList – paraUnid', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(3);
-    const unids = atoms.map((a) => a.paraUnid);
+    const words = atoms.filter((a) => a.kind === 'word');
+    expect(words).toHaveLength(3);
+    const unids = words.map((a) => a.paraUnid);
     expect(new Set(unids).size).toBe(1);
     expect(unids[0]).toBeGreaterThan(0);
   });
@@ -133,8 +136,9 @@ describe('createAtomList – run and paragraph properties', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(1);
-    expect(atoms[0]!.runPropsXml).toContain('w:b');
+    const word = atoms.find((a) => a.kind === 'word');
+    expect(word).toBeDefined();
+    expect(word!.runPropsXml).toContain('w:b');
   });
 
   it('captures w:pPr XML on atoms from a styled paragraph', async () => {
@@ -147,8 +151,9 @@ describe('createAtomList – run and paragraph properties', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(1);
-    expect(atoms[0]!.paraPropsXml).toContain('Heading1');
+    const headingWord = atoms.find((a) => a.kind === 'word');
+    expect(headingWord).toBeDefined();
+    expect(headingWord!.paraPropsXml).toContain('Heading1');
   });
 
   it('propagates the same runPropsXml to all words from one run', async () => {
@@ -163,8 +168,9 @@ describe('createAtomList – run and paragraph properties', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(3);
-    const xmls = atoms.map((a) => a.runPropsXml);
+    const words = atoms.filter((a) => a.kind === 'word');
+    expect(words).toHaveLength(3);
+    const xmls = words.map((a) => a.runPropsXml);
     expect(new Set(xmls).size).toBe(1);
     expect(xmls[0]).toContain('w:i');
   });
@@ -176,7 +182,9 @@ describe('createAtomList – run and paragraph properties', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms[0]!.runPropsXml).toBe('');
+    const word = atoms.find((a) => a.kind === 'word');
+    expect(word).toBeDefined();
+    expect(word!.runPropsXml).toBe('');
   });
 });
 
@@ -196,7 +204,7 @@ describe('createAtomList – non-text inline atoms', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    const kinds = atoms.map((a) => a.kind);
+    const kinds = atoms.filter((a) => a.kind !== 'paragraph-mark').map((a) => a.kind);
     expect(kinds).toContain('break');
     expect(kinds).toEqual(['word', 'break', 'word']);
   });
@@ -226,9 +234,9 @@ describe('createAtomList – non-text inline atoms', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(1);
-    expect(atoms[0]!.kind).toBe('image');
-    expect(atoms[0]!.text).toContain('drawing');
+    const imageAtoms = atoms.filter((a) => a.kind === 'image');
+    expect(imageAtoms).toHaveLength(1);
+    expect(imageAtoms[0]!.text).toContain('drawing');
   });
 
   it('two identical break atoms have the same text key', async () => {
@@ -241,8 +249,9 @@ describe('createAtomList – non-text inline atoms', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms).toHaveLength(2);
-    expect(atoms[0]!.text).toBe(atoms[1]!.text);
+    const breaks = atoms.filter((a) => a.kind === 'break');
+    expect(breaks).toHaveLength(2);
+    expect(breaks[0]!.text).toBe(breaks[1]!.text);
   });
 });
 
@@ -262,7 +271,7 @@ describe('createAtomList – run containers', () => {
       </w:body></w:document>
     `);
     const { atoms } = await createAtomList(docx);
-    expect(atoms.map((a) => a.text)).toEqual(['click', 'here']);
+    expect(atoms.filter((a) => a.kind === 'word').map((a) => a.text)).toEqual(['click', 'here']);
   });
 
   it('respects revisionMode when processing revision markup', async () => {
@@ -277,10 +286,10 @@ describe('createAtomList – run containers', () => {
     `);
 
     const accepted = await createAtomList(docx, { revisionMode: 'accept' });
-    expect(accepted.atoms.map((a) => a.text)).toEqual(['kept', 'inserted']);
+    expect(accepted.atoms.filter((a) => a.kind === 'word').map((a) => a.text)).toEqual(['kept', 'inserted']);
 
     const rejected = await createAtomList(docx, { revisionMode: 'reject' });
-    expect(rejected.atoms.map((a) => a.text)).toEqual(['kept', 'deleted']);
+    expect(rejected.atoms.filter((a) => a.kind === 'word').map((a) => a.text)).toEqual(['kept', 'deleted']);
   });
 });
 
@@ -365,5 +374,97 @@ describe('createAtomList – table content', () => {
     // All produced atoms must have a valid paraUnid (stamped during assignUnids).
     const wordAtoms = result.atoms.filter((a) => a.kind === 'word');
     expect(wordAtoms.every((a) => a.paraUnid > 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ancestorKeys propagation
+// ---------------------------------------------------------------------------
+
+describe('createAtomList – ancestorKeys', () => {
+  it('standalone paragraph atom has ancestorKeys ending with p:N', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:p><w:r><w:t>hello</w:t></w:r></w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const word = atoms.find((a) => a.kind === 'word');
+    expect(word).toBeDefined();
+    const keys = word!.ancestorKeys;
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^p:\d+$/);
+  });
+
+  it('table-cell paragraph atom has ancestorKeys [tbl:X, tr:Y, tc:Z, p:N]', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p><w:r><w:t>cell</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const word = atoms.find((a) => a.kind === 'word');
+    expect(word).toBeDefined();
+    const keys = word!.ancestorKeys;
+    expect(keys).toHaveLength(4);
+    expect(keys[0]).toMatch(/^tbl:\d+$/);
+    expect(keys[1]).toMatch(/^tr:\d+$/);
+    expect(keys[2]).toMatch(/^tc:\d+$/);
+    expect(keys[3]).toMatch(/^p:\d+$/);
+  });
+
+  it('all atoms in a paragraph share the same ancestorKeys', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:p><w:r><w:t>one two three</w:t></w:r></w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const words = atoms.filter((a) => a.kind === 'word');
+    const firstKeys = words[0]!.ancestorKeys;
+    for (const atom of words) {
+      expect(atom.ancestorKeys).toEqual(firstKeys);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Paragraph-mark atoms
+// ---------------------------------------------------------------------------
+
+describe('createAtomList – paragraph-mark atoms', () => {
+  it('emits one paragraph-mark atom per paragraph', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:p><w:r><w:t>one</w:t></w:r></w:p>
+        <w:p><w:r><w:t>two</w:t></w:r></w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const marks = atoms.filter((a) => a.kind === 'paragraph-mark');
+    expect(marks).toHaveLength(2);
+    expect(marks.every((m) => m.runPropsXml === '')).toBe(true);
+  });
+
+  it('paragraph-mark atom carries serialized pPr when present', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:p>
+          <w:pPr><w:pStyle w:val="Heading1"/></w:pPr>
+          <w:r><w:t>heading</w:t></w:r>
+        </w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const mark = atoms.find((a) => a.kind === 'paragraph-mark');
+    expect(mark).toBeDefined();
+    expect(mark!.text).toContain('w:pPr');
+    expect(mark!.text).toContain('Heading1');
   });
 });
