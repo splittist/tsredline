@@ -1,6 +1,6 @@
 DOCX Comparison Port Progress
 
-Last reviewed: 2026-06-07 (updated 2026-06-07: run-level unid stamping and atom runUnid metadata)
+Last reviewed: 2026-06-07 (updated 2026-06-07: trackMoves now reports moved-unit metrics)
 
 Summary
 
@@ -25,6 +25,7 @@ What is implemented
   - report coarse replace metadata for differing documents,
   - compute and report correlation-derived unit counts (equal/deleted/inserted) from the new LCS segmentation pass in preprocessed-text mode,
   - run assignUnids + createAtomList + getComparisonUnitList and correlate hierarchical comparison units to report structural comparison-unit counts (baseline/candidate/equal/deleted/inserted) in metadata and change notices.
+  - when trackMoves is enabled, derive and report move-candidate counts for both preprocessed units and structural comparison units by intersecting deleted/inserted hash multisets (without changing base conservation metrics).
 - Real fixture-based tests exist for preprocessing, block hashing, and smoke coverage across a curated set of DOCX comparison cases.
 - A characterization matrix has been started in tests/fixtures/caseManifest.ts, with C#-traceable scenarios covering text edits, paragraph-boundary cases, tables, moves, footnotes/endnotes, images, and math.
 - The repo contains a call-graph document that breaks the original C# algorithm into explicit phases, which is useful as a porting roadmap.
@@ -54,7 +55,7 @@ What is only partially ported
   - it hashes extracted text rather than cloned normalized OpenXML blocks,
   - it does not propagate hashes back onto XML elements via unid correlation,
   - it does not yet preserve C#-style per-element hash attributes for downstream correlation/reconstruction.
-- The trackMoves option is accepted by compareDocx callers but is not used by the implementation.
+- trackMoves now reports move-candidate metrics, but move-aware reconstruction and explicit move markup emission are still not implemented.
 - Diagnostics/notices are placeholder status messages centered on the scaffold state.
 
 What does not appear to be ported yet

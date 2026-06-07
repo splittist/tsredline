@@ -126,4 +126,33 @@ describe('compareDocx', () => {
       result.metadata.baselineComparisonUnits,
     );
   });
+
+  it('reports moved unit metrics when trackMoves is enabled', async () => {
+    const baseline = await createSyntheticDocx(`
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:t>alpha beta gamma</w:t></w:r></w:p>
+        </w:body>
+      </w:document>
+    `);
+    const candidate = await createSyntheticDocx(`
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:t>beta alpha gamma</w:t></w:r></w:p>
+        </w:body>
+      </w:document>
+    `);
+
+    const result = await compareDocx(baseline, candidate, { trackMoves: true });
+
+    expect(result.equal).toBe(false);
+    expect(result.metadata.movedUnits).toBeGreaterThan(0);
+    expect(result.metadata.movedComparisonUnits).toBeDefined();
+    expect(result.changes).toContainEqual({
+      kind: 'replace',
+      path: 'word/document.xml:moves',
+      before: `${result.metadata.movedUnits} moved preprocessed unit(s)`,
+      after: `${result.metadata.movedUnits} moved preprocessed unit(s)`,
+    });
+  });
 });

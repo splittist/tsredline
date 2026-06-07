@@ -28,11 +28,13 @@ export interface ComparisonMetadata {
   readonly equalUnits?: number;
   readonly deletedUnits?: number;
   readonly insertedUnits?: number;
+  readonly movedUnits?: number;
   readonly baselineComparisonUnits?: number;
   readonly candidateComparisonUnits?: number;
   readonly equalComparisonUnits?: number;
   readonly deletedComparisonUnits?: number;
   readonly insertedComparisonUnits?: number;
+  readonly movedComparisonUnits?: number;
 }
 
 export interface CompareResult {
