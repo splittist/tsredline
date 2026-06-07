@@ -186,6 +186,38 @@ describe('createAtomList – run and paragraph properties', () => {
     expect(word).toBeDefined();
     expect(word!.runPropsXml).toBe('');
   });
+
+  it('captures a positive runUnid for run-derived atoms', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W}><w:body>
+        <w:p>
+          <w:r><w:t>alpha beta</w:t></w:r>
+        </w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const words = atoms.filter((a) => a.kind === 'word');
+    expect(words).toHaveLength(2);
+    expect(words.every((a) => a.runUnid > 0)).toBe(true);
+    expect(new Set(words.map((a) => a.runUnid)).size).toBe(1);
+  });
+
+  it('uses runUnid=0 for paragraph-level atoms', async () => {
+    const docx = await stampedDocx(`
+      <w:document ${W} ${M}><w:body>
+        <w:p>
+          <m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>
+        </w:p>
+      </w:body></w:document>
+    `);
+    const { atoms } = await createAtomList(docx);
+    const paragraphMark = atoms.find((a) => a.kind === 'paragraph-mark');
+    const math = atoms.find((a) => a.kind === 'math');
+    expect(paragraphMark).toBeDefined();
+    expect(math).toBeDefined();
+    expect(paragraphMark!.runUnid).toBe(0);
+    expect(math!.runUnid).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

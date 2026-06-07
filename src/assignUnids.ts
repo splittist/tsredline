@@ -8,10 +8,11 @@ export const WCT_UNID_LOCAL = 'id';
 export const WCT_UNID_QNAME = `${WCT_PREFIX}:${WCT_UNID_LOCAL}`;
 export const WCT_XMLNS_QNAME = `xmlns:${WCT_PREFIX}`;
 
-// Block-level local names that receive a stamped unid.
+// OpenXML local names that receive a stamped unid.
 // p/tr are the primary LCS correlation units; tbl/tc/txbxContent are needed
 // to build the hierarchical grouping keys used by getComparisonUnitList.
-const STAMPED_LOCAL_NAMES = new Set(['p', 'tr', 'tbl', 'tc', 'txbxContent']);
+// r is stamped for reconstruction phases that must target source runs precisely.
+const STAMPED_LOCAL_NAMES = new Set(['p', 'tr', 'tbl', 'tc', 'txbxContent', 'r']);
 
 export interface AssignUnidsResult {
   readonly docx: ArrayBuffer;

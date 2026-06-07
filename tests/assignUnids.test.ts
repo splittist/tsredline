@@ -60,6 +60,31 @@ describe('assignUnids', () => {
     expect(new Set(all).size).toBe(all.length);
   });
 
+  it('stamps every w:r in document.xml with a unique positive integer', async () => {
+    const docx = await loadFixture('WC', 'WC002-Unmodified.docx');
+    const result = await assignUnids(docx);
+
+    const xml = await readDocxPartText(result.docx, 'word/document.xml');
+    const doc = parseXml(xml);
+    const ids = collectUnids(doc, 'r');
+
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(Math.min(...ids)).toBeGreaterThan(0);
+  });
+
+  it('ids are globally unique across stamped element kinds within a part', async () => {
+    const docx = await loadFixture('WC', 'WC024-Table-Before.docx');
+    const result = await assignUnids(docx);
+
+    const xml = await readDocxPartText(result.docx, 'word/document.xml');
+    const doc = parseXml(xml);
+    const stampedKinds = ['p', 'tr', 'tbl', 'tc', 'txbxContent', 'r'];
+    const all = stampedKinds.flatMap((kind) => collectUnids(doc, kind));
+
+    expect(new Set(all).size).toBe(all.length);
+  });
+
   it('processes footnotes.xml when present and continues the counter', async () => {
     const docx = await loadFixture('WC', 'WC020-FootNote-Before.docx');
     const result = await assignUnids(docx);
@@ -85,7 +110,7 @@ describe('assignUnids', () => {
     const docx = await loadFixture('WC', 'WC020-FootNote-Before.docx');
     const result = await assignUnids(docx);
 
-    const stampedKinds = ['p', 'tr', 'tbl', 'tc', 'txbxContent'];
+    const stampedKinds = ['p', 'tr', 'tbl', 'tc', 'txbxContent', 'r'];
     let total = 0;
     for (const partName of result.partsStamped) {
       const xml = await readDocxPartText(result.docx, partName);
